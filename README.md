@@ -15,7 +15,7 @@ Protocol tooling for **Forensic Fact Recoverability After Pod Termination: Effec
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.lock && pip install -e .
-pytest                      # 41 tests on synthetic fixtures
+pytest                      # 47 tests on synthetic fixtures
 frx freeze-check            # lists what still blocks freeze (expected: G1-G5 placeholders)
 frx headroom --m 1000000 --k 1 --elapsed 60   # Section 4.3 operating-point arithmetic
 ```
@@ -62,14 +62,15 @@ The repository **and** the evidence store must live on the WSL Linux filesystem 
 | `frx.status` — disposition rules and `run_status.json` schema | Done, tested | 10 |
 | `frx.contract` — contract/parameter checks and freeze readiness | Done, tested | 6, 7, 22 |
 | `frx.harness`, `frx.acquisition`, `frx.orchestrator`, `frx.reconstruct` | Interfaces only; build and test on fixtures, then qualify | 7, 3, 9/19, 7 → G1–G3 |
-| `cluster/` — kind config, audit policy, Tetragon values, target pod, load generator | Drafts; confirm key names against pinned versions | 3, 6 → G1–G3 |
+| `frx.cluster`, `frx.fingerprint`, `frx.smoke` — rendered kind/Tetragon config, platform fingerprint, G1 smoke test | Done, tested (rendering, analysis) | 3, 6, 14 → G1 |
+| `cluster/` — audit policy, target pod, load generator | Drafts frozen at G2/G3 | 3, 6 |
 
 ## Gate workflow
 
 | Gate | What you do | Repo commands / files | Tag |
 | --- | --- | --- | --- |
 | G0 | Literature matrix; this protocol | `protocol/` | `g0-scaffold` |
-| G1 | Pin host, kind, images; capacity run (20 min) | fill `<G1>` values; `software/` in the evidence store | `g1-platform` |
+| G1 | Pre-flight; bring up cluster; smoke test; capacity run at provisional ceiling (20 min) | `scripts/g1_preflight.sh`, `scripts/g1_cluster_up.sh`, `frx smoke`, `frx fingerprint` | `g1-platform` |
 | G2 + G3 | Qualification series Q (33 `QUAL-` runs); fix contract details, store capacity, rates | `frx headroom ...`; fill `<G2>`/`<G3>` values | `g3-qualified` |
 | G4 | 3 pilot blocks (`PILOT-`) | `frx verify-package`, `frx verify-block` | `g4-pilot` |
 | G5 | Power simulation; seed; schedule; FREEZE.json; registration | `frx power ...`, `frx schedule ...`, `frx freeze-check` must exit 0 | `protocol-v3.0-frozen` |

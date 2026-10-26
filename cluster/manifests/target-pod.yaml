@@ -15,8 +15,9 @@ spec:
     - name: target
       image: "<G2: image@sha256:digest with a real exec binary, e.g. coreutils echo>"
       imagePullPolicy: IfNotPresent
-      # exits promptly on SIGTERM (PID 1 ignores SIGTERM unless trapped)
-      command: ["/bin/sh", "-c", "trap 'exit 0' TERM; while :; do sleep 1; done"]
+      # No periodic child processes (keeps the Tetragon store free of target noise). PID 1 sleep
+      # ignores SIGTERM, so the 1 s grace period ends in SIGKILL: termination within ~1 s.
+      command: ["sleep", "infinity"]
       resources:
         requests: {cpu: "10m", memory: "16Mi"}
         limits: {cpu: "100m", memory: "64Mi"}

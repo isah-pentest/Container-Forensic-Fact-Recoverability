@@ -15,6 +15,7 @@ from .power import Scenario, choose_b, run_grid
 from .randomization import make_schedule, write_schedule
 from .stats import primary_analysis, wilson
 from .status import validate_status
+from .cluster import KIND_V0_33_DEFAULT_IMAGE, StoreSizes, render_kind_config, render_tetragon_values
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -105,6 +106,48 @@ def cmd_headroom(a) -> int:
     return 0
 
 
+def cmd_cluster_config(a) -> int:
+    sizes = StoreSizes(a.audit_max_mb, a.audit_backups, a.tetragon_max_mb, a.tetragon_backups,
+                       provisional=not a.final)
+    out = Path(a.out_dir); out.mkdir(parents=True, exist_ok=True)
+    for sub in ("audit", "tetragon"):
+        (Path(a.stores) / sub).mkdir(parents=True, exist_ok=True)
+    (out / "kind-config.yaml").write_text(render_kind_config(REPO, Path(a.stores), sizes, a.node_image))
+    (out / "tetragon-values.yaml").write_text(render_tetragon_values(sizes))
+    print(_json({"written": [str(out / "kind-config.yaml"), str(out / "tetragon-values.yaml")],
+                 "sizes": sizes.__dict__, "node_image": a.node_image}))
+    return 0
+
+
+def cmd_fingerprint(a) -> int:
+    from .fingerprint import collect
+    fp = collect(REPO)
+    text = _json(fp)
+    if a.out:
+        Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(a.out).write_text(text)
+        print(_json({"written": a.out, "stable_hash": fp["stable_hash"]}))
+    else:
+        print(text)
+    return 0
+
+
+def cmd_smoke(a) -> int:
+    import subprocess
+    from .smoke import run
+    ctx = subprocess.run(["kubectl", "config", "current-context"], capture_output=True, text=True).stdout.strip()
+    if ctx != "kind-frx":
+        print(f"refusing: current kubectl context is '{ctx}', expected 'kind-frx'")
+        return 2
+    rep = run(REPO, Path(a.stores), Path(a.out_dir), a.image, a.exec_binary, a.settle)
+    summary = {"report": rep.get("report_path"), "error": rep.get("error"),
+               "verdict": (rep.get("results") or {}).get("verdict"),
+               "action_duration_s": rep.get("action_duration_s"),
+               "store_files": rep.get("store_files")}
+    print(_json(summary))
+    return 0 if not rep.get("error") else 2
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="frx", description="FRX protocol tools (Blueprint v3.0)")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -155,6 +198,29 @@ def main(argv=None) -> int:
     s.add_argument("--p-mod", type=float, default=0.5)
     s.add_argument("--rate", type=float)
     s.set_defaults(fn=cmd_headroom)
+
+    s = sub.add_parser("cluster-config", help="render kind config and Tetragon values (G1, G3)")
+    s.add_argument("--stores", required=True, help="host directory holding stores/audit and stores/tetragon")
+    s.add_argument("--out-dir", required=True)
+    s.add_argument("--audit-max-mb", type=int, default=10)
+    s.add_argument("--audit-backups", type=int, default=5)
+    s.add_argument("--tetragon-max-mb", type=int, default=10)
+    s.add_argument("--tetragon-backups", type=int, default=5)
+    s.add_argument("--node-image", default=KIND_V0_33_DEFAULT_IMAGE)
+    s.add_argument("--final", action="store_true", help="sizes fixed by the Section 4.3 rule (G3)")
+    s.set_defaults(fn=cmd_cluster_config)
+
+    s = sub.add_parser("fingerprint", help="platform fingerprint JSON (G1 and every session open)")
+    s.add_argument("--out")
+    s.set_defaults(fn=cmd_fingerprint)
+
+    s = sub.add_parser("smoke", help="G1 smoke test: one create-exec-delete, then read both stores")
+    s.add_argument("--stores", required=True)
+    s.add_argument("--out-dir", required=True)
+    s.add_argument("--image", required=True, help="target image (tag allowed at G1; digest required from G2)")
+    s.add_argument("--exec-binary", default="/usr/bin/echo")
+    s.add_argument("--settle", type=float, default=5.0)
+    s.set_defaults(fn=cmd_smoke)
 
     a = p.parse_args(argv)
     return a.fn(a)
