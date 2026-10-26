@@ -20,6 +20,35 @@ frx freeze-check            # lists what still blocks freeze (expected: G1-G5 pl
 frx headroom --m 1000000 --k 1 --elapsed 60   # Section 4.3 operating-point arithmetic
 ```
 
+## Running on Windows with VS Code + WSL2
+
+The repository **and** the evidence store must live on the WSL Linux filesystem (e.g. `~/frx-recoverability`, `~/frx-evidence`), never under `C:\` or OneDrive (`/mnt/c/...`). Windows mounts do not enforce the read-only locks, are much slower for many small files, and OneDrive sync can rewrite or hold files while they are being hashed.
+
+1. Move the zip into WSL and unpack it there (from a WSL terminal):
+   ```bash
+   cp "/mnt/c/Users/<you>/OneDrive - <org>/Downloads/frx-recoverability.zip" ~/
+   cd ~ && unzip frx-recoverability.zip && cd frx-recoverability
+   git log --oneline --decorate        # expect the g0-scaffold tag
+   git config core.autocrlf input      # keep LF line endings
+   ```
+2. Open it in VS Code through WSL: `code .` (requires the WSL extension). The window title should show `[WSL: <distro>]`.
+3. Python environment inside WSL: see Quick start.
+4. Size WSL in `%UserProfile%\.wslconfig` (Windows side), then run `wsl --shutdown` from PowerShell and reopen. Record this file in the evidence store at G1:
+   ```ini
+   [wsl2]
+   memory=12GB
+   processors=8
+   swap=0
+   ```
+5. Run the read-only pre-flight and keep its report:
+   ```bash
+   mkdir -p ~/frx-evidence/software
+   ./scripts/g1_preflight.sh ~/frx-evidence | tee ~/frx-evidence/software/preflight_$(date -u +%Y%m%dT%H%M%SZ).txt
+   ```
+   Run it as your normal user, not root. Fix every `FAIL` before the G1 capacity run.
+6. During sessions: plug in power, disable Windows sleep and hibernation, pause OneDrive sync and Windows Update. After any sleep, check the WSL clock (`sudo hwclock -s` or `wsl --shutdown`) and re-run the pre-flight.
+7. Off-host replica (Section 15.3): use a separate physical drive or machine. A OneDrive folder is acceptable only as a replica target set to "Always keep on this device", because hash verification must read every byte locally.
+
 ## What is implemented now vs. at gates
 
 | Module | Status | Blueprint section |
