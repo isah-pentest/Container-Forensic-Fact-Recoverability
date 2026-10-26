@@ -65,6 +65,10 @@ analysis:                    # locked
 
 host:                        # Section 14
   capacity_run_min: 20
+  capacity_runs:                     # Section 14.2 (change log 2026-10-26)
+    G1: provisional_ceiling          # every replica at its maximum configured rates
+    G3: highest_calibration_rate     # predicted H ~ 0.5 for F1; both runs must pass
+  timestamp_source: python_time_ns_and_monotonic_ns   # never shell date (Section 14.1)
   peak_memory_max_fraction: 0.75
   preaction_memory_min_fraction: 0.30
   disk_free_min: "3 x package_size + 10 GB"

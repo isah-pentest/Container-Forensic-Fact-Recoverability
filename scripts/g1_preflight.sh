@@ -35,6 +35,12 @@ if [ -r /proc/config.gz ]; then
 else
   warn "/proc/config.gz not available; kernel options cannot be listed here"
 fi
+DATEIMPL="$(date --version 2>&1 | head -1)"
+echo "date implementation: $DATEIMPL"
+case "$(date +%3N 2>/dev/null)" in
+  [0-9][0-9][0-9]) ok "date +%3N gives milliseconds";;
+  *) warn "date +%3N does not give 3 digits on this system: timestamps must come from the orchestrator (Python time_ns/monotonic_ns), never shell date";;
+esac
 INIT="$(ps -p 1 -o comm= 2>/dev/null)"
 [ "$INIT" = "systemd" ] && ok "systemd is PID 1" || warn "PID 1 is '$INIT' (enable systemd in /etc/wsl.conf if Docker Engine runs inside WSL)"
 
@@ -123,7 +129,7 @@ fi
 if have powershell.exe; then
   W=$(powershell.exe -NoProfile -NonInteractive -Command "[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()" 2>/dev/null \
       | tr -d '\r' | grep -oE '[0-9]{13}' | head -1)
-  L=$(date +%s%3N)
+  L=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')   # never shell date: %N handling differs between coreutils builds
   if [ -n "$W" ]; then
     D=$(( L - W )); A=${D#-}
     echo "WSL minus Windows clock: ${D} ms (includes ~0.3-1 s PowerShell start-up)"
