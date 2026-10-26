@@ -20,7 +20,22 @@ frx freeze-check            # lists what still blocks freeze (expected: G1-G5 pl
 frx headroom --m 1000000 --k 1 --elapsed 60   # Section 4.3 operating-point arithmetic
 ```
 
-## Running on Windows with VS Code + WSL2
+## Study host: Ubuntu Server VM on Hyper-V
+
+**G1 finding (2026-10-26):** a WSL2 distro runs in a nested PID namespace, so Tetragon cannot attribute processes in new pods to their pod there. The study therefore runs in a full Ubuntu Server VM (or on native Linux). `scripts/g1_preflight.sh` now fails on any nested PID namespace.
+
+1. Windows (Administrator PowerShell): save the BitLocker recovery key, enable Hyper-V, reboot.
+2. Copy the Ubuntu Server ISO to `C:\HyperV\` and run `scripts/hyperv_create_vm.ps1 -Iso <iso>`
+   (Gen 2, Secure Boot off, 12 GB static memory, 8 vCPUs, checkpoints disabled; the configuration
+   is written to `C:\HyperV\frx-ubuntu-config.json`).
+3. Install Ubuntu Server with OpenSSH; connect from VS Code with the **Remote - SSH** extension.
+4. In the VM: clone the repo bundle, then `./scripts/host_bootstrap_ubuntu.sh` (pinned kind, kubectl,
+   helm, Docker Engine, Python environment; automatic upgrades paused during the study).
+5. `./scripts/g1_preflight.sh ~/frx-evidence`, then `./scripts/g1_cluster_up.sh 1.7.1` and the smoke test.
+
+Shut WSL down (`wsl --shutdown`) while the VM runs: both need about 12 GB of the PC's RAM.
+
+## Running on Windows with VS Code + WSL2 (tooling only; not a valid study host)
 
 The repository **and** the evidence store must live on the WSL Linux filesystem (e.g. `~/frx-recoverability`, `~/frx-evidence`), never under `C:\` or OneDrive (`/mnt/c/...`). Windows mounts do not enforce the read-only locks, are much slower for many small files, and OneDrive sync can rewrite or hold files while they are being hashed.
 

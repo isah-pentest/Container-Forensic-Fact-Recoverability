@@ -41,6 +41,17 @@ case "$(date +%3N 2>/dev/null)" in
   [0-9][0-9][0-9]) ok "date +%3N gives milliseconds";;
   *) warn "date +%3N does not give 3 digits on this system: timestamps must come from the orchestrator (Python time_ns/monotonic_ns), never shell date";;
 esac
+VIRT="$(systemd-detect-virt 2>/dev/null || echo unknown)"; echo "virtualization: $VIRT"
+PIDNS="$(readlink /proc/self/ns/pid 2>/dev/null | tr -dc 0-9)"   # this shell's PID namespace
+if [ "$PIDNS" = "4026531836" ]; then
+  ok "processes run in the kernel's initial PID namespace (Tetragon can attribute pods)"
+else
+  fail "nested PID namespace (pid ns inode $PIDNS, expected 4026531836), e.g. WSL2 or a container: Tetragon cannot attribute pod processes (G1 finding 2026-10-26). Use native Linux or a full Linux VM"
+fi
+if [ -r /sys/kernel/security/lockdown ]; then
+  LD="$(cat /sys/kernel/security/lockdown)"; echo "kernel lockdown: $LD"
+  case "$LD" in *"[none]"*) ok "kernel lockdown off";; *) warn "kernel lockdown active ($LD): disable Secure Boot for the VM so eBPF tracing is not restricted";; esac
+fi
 INIT="$(ps -p 1 -o comm= 2>/dev/null)"
 [ "$INIT" = "systemd" ] && ok "systemd is PID 1" || warn "PID 1 is '$INIT' (enable systemd in /etc/wsl.conf if Docker Engine runs inside WSL)"
 
@@ -79,7 +90,7 @@ MEM_MB=$(awk '/MemTotal/{printf "%d", $2/1024}' /proc/meminfo)
 CPUS=$(nproc)
 echo "memory: $(awk -v m="$MEM_MB" 'BEGIN{printf "%.1f", m/1024}') GiB   vCPUs: ${CPUS}"
 [ "$MEM_MB" -ge 11000 ] && ok "memory >= ~11 GiB (the 20-min capacity run at G1 decides)" \
-  || warn "memory below ~11 GiB: raise 'memory=' in %UserProfile%\\.wslconfig (capacity run at G1 decides)"
+  || warn "memory below ~11 GiB: raise the VM's memory (or memory= in .wslconfig); the capacity run at G1 decides"
 [ "$CPUS" -ge 4 ] && ok "vCPUs >= 4" || warn "only ${CPUS} vCPUs visible"
 SWAP_GB=$(awk '/SwapTotal/{printf "%d", $2/1024/1024}' /proc/meminfo); echo "swap: ${SWAP_GB} GB (record it; swapping during runs distorts timing)"
 
