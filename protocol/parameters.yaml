@@ -1,0 +1,76 @@
+# FRX fixed parameters — Blueprint v3.0, Sections 3, 6, 8, 9, 12, 14.
+# "locked" values may change only through a new protocol version.
+# "<Gx>" values are set at that gate by the rule cited and committed before freeze (G5).
+protocol_version: "3.0"
+
+timing:                      # locked
+  delay_s: 60                # delta
+  grace_s: 10                # g  (g < delta)
+  epsilon_s: 5
+  delay_tolerance_s: 2
+  settle_s: 10
+  load_warmup_s: 20
+  load_warmup_block_start_s: 60
+  manipulation_window_s: 15
+  termination_poll_interval_s: 0.5
+  readiness_timeout_s: "<G3>"        # 3 x max observed in Q-a/Q-b, rounded up
+  namespace_delete_timeout_s: "<G3>"
+
+target_pod:                  # locked
+  termination_grace_period_s: 1
+  sidecars: none
+  image_pull_policy: IfNotPresent
+  image_digest: "<G2>"
+  exec_binary: "<G2>"
+  namespace_pattern: "frx-{short_uuid}"
+  pod_pattern: "tgt-{short_uuid}"
+  nonce_bits: 128
+  marker_prefix: "FRX-"
+
+load:
+  namespace: frx-load
+  configmap: frx-load-rate
+  manipulation_tolerance: 0.20       # locked: +/- 20 % of target, both sources
+  replicas: "<G3>"
+  rate_low_bytes_per_s: {audit: "<G3>", tetragon: "<G3>"}
+  rate_moderate_bytes_per_s: {audit: "<G3>", tetragon: "<G3>"}
+  per_replica_exec_per_s: {L: "<G3>", M: "<G3>"}
+  per_replica_api_per_s: {L: "<G3>", M: "<G3>"}
+
+stores:                      # Section 4.3 rule; k >= 1 required
+  audit: {max_size_mb: "<G3>", max_backups: "<G3>", max_age_days: 365, compress: false}
+  tetragon: {max_size_mb: "<G3>", max_backups: "<G3>", rotation_interval: disabled}
+  capacity_rationale: "<G3>"
+
+design:                      # locked
+  cells: [LC, LD, MC, MD]
+  controls_per_block: 1
+  b_max: 24
+  n_blocks: "<G5>"
+  master_seed: "<G5>"
+  pilot_blocks: 3
+  qualification: {q_a_runs: 12, q_b_runs: 12, q_c_rates: 3, q_c_runs_per_rate: 3}
+  calibration: {rates: 4, runs_per_rate: 4, target_h_f1: [2.0, 1.2, 0.8, 0.5]}
+
+analysis:                    # locked
+  alpha: 0.05
+  minimally_important_effect: 0.25
+  randomization_draws: 100000
+  exact_limit_assignments: 1000000
+  fallback_min_nonzero_blocks: 5
+  power:
+    search: {b_values: [6, 8, 10, 12, 14, 16, 20, 24], sigma_b: [0.0, 0.5, 1.0], n_sims: 1000, n_draws: 1000}
+    confirm: {n_sims: 2000, n_draws: 2000, null_type1_band: [0.035, 0.065]}
+    rule: {primary_scenario: pilot_informed, conservative_scenario: conservative, sigma_b: 0.5, target_primary: 0.80, target_conservative: 0.70}
+
+host:                        # Section 14
+  capacity_run_min: 20
+  peak_memory_max_fraction: 0.75
+  preaction_memory_min_fraction: 0.30
+  disk_free_min: "3 x package_size + 10 GB"
+  stop_after_consecutive_oom: 2
+
+stop_rules:                  # Section 10.4, locked
+  abort_unscorable_ceiling_per_cell_fraction: 0.15
+  abort_unscorable_ceiling_per_cell_per_block: 2
+  max_collector_failure_imbalance: 3

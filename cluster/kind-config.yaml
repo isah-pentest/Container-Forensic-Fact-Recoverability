@@ -1,0 +1,43 @@
+# Single-node kind cluster with a file-backed, size-rotated audit log (Blueprint v3.0, Sections 3, 6.3).
+# Values in <...> are set at the named gate. Verify field names against the pinned kind and
+# kubeadm versions at G1 (kubeadm config API versions differ in how extraArgs are written).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: frx
+nodes:
+  - role: control-plane
+    image: kindest/node:<G1 pinned tag>@sha256:<G1 digest>
+    kubeadmConfigPatches:
+      - |
+        kind: ClusterConfiguration
+        apiServer:
+          extraArgs:
+            audit-policy-file: /etc/kubernetes/policies/audit-policy.yaml
+            audit-log-path: /var/log/kubernetes/audit/audit.json
+            audit-log-format: json
+            audit-log-maxsize: "<G3: M_audit in MB>"
+            audit-log-maxbackup: "<G3: k_audit, >= 1>"
+            audit-log-maxage: "365"            # age-based deletion effectively disabled
+            audit-log-compress: "false"
+          extraVolumes:
+            - name: audit-policies
+              hostPath: /etc/kubernetes/policies
+              mountPath: /etc/kubernetes/policies
+              readOnly: true
+              pathType: DirectoryOrCreate
+            - name: audit-logs
+              hostPath: /var/log/kubernetes/audit
+              mountPath: /var/log/kubernetes/audit
+              readOnly: false
+              pathType: DirectoryOrCreate
+    extraMounts:
+      # audit policy from this repository
+      - hostPath: <ABS PATH>/frx-recoverability/cluster/audit-policy.yaml
+        containerPath: /etc/kubernetes/policies/audit-policy.yaml
+        readOnly: true
+      # source-side store A: visible on the host so acquisition never enters the cluster
+      - hostPath: <ABS PATH>/stores/audit
+        containerPath: /var/log/kubernetes/audit
+      # source-side store T: Tetragon export directory (confirm path at G1)
+      - hostPath: <ABS PATH>/stores/tetragon
+        containerPath: /var/run/cilium/tetragon

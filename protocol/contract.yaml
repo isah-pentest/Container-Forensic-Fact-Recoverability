@@ -1,0 +1,82 @@
+# FRX evidence contract — Blueprint v3.0, Section 7 and Appendix A.
+# Values written as "<G2>" are set at gate G2 by the rules in Section 22.2 and committed
+# before the pilot. The loader refuses to run confirmatory scoring while any remain.
+contract_version: 3.0.0
+run_window:
+  start: ACTION_REQUEST
+  start_offset_s: -5          # epsilon
+  end: TERMINATION_CONFIRMED
+  end_offset_s: 10            # g
+primary_facts: [F1, F2, F3]
+secondary_facts: [F4, F5, F6]
+scoring_states: ["CORRECT", "FALSE", "ABSTAIN", "NOT_ELIGIBLE"]   # quoted: bare FALSE is a YAML boolean
+union_rule: "CORRECT if any eligible CORRECT and none FALSE; CONFLICT if any FALSE; else NOT_RECOVERED"
+sources: [audit, tetragon]
+
+facts:
+  F1:
+    question: "Which pod was created in namespace {ns}, with what UID?"
+    eligible: [audit]
+    required_answer_fields: [pod_name, pod_uid]
+    audit:
+      match:
+        verb: create
+        objectRef.resource: pods
+        objectRef.namespace: "{ns}"
+        objectRef.name: "{pod}"
+        stage: ResponseComplete
+        responseStatus.code: 201
+      uid_path: responseObject.metadata.uid
+      dedupe_key: auditID
+      expected_cardinality: 1
+
+  F2:
+    question: "What executable and arguments were executed in pod {pod}?"
+    eligible: [audit, tetragon]
+    required_answer_fields: [executable, arguments]
+    audit:
+      match:
+        objectRef.resource: pods
+        objectRef.subresource: exec
+        objectRef.namespace: "{ns}"
+        objectRef.name: "{pod}"
+      verbs_accepted: "<G2>"
+      stages_accepted: "<G2>"
+      command_source: requestURI.query.command
+      dedupe_key: auditID
+    tetragon:
+      event: process_exec
+      match:
+        process.pod.namespace: "{ns}"
+        process.pod.name: "{pod}"
+        process.binary: "<G2>"
+      fallback_attribution: "<G2>"     # none | container_id
+      arguments_field: process.arguments
+
+  F3:
+    question: "Was pod {pod} deleted?"
+    eligible: [audit]
+    required_answer_fields: [pod_name]
+    audit:
+      match:
+        verb: delete
+        objectRef.resource: pods
+        objectRef.namespace: "{ns}"
+        objectRef.name: "{pod}"
+        stage: ResponseComplete
+      success_codes: [200, 202]
+      uid_required: "<G2>"
+
+  F4:
+    question: "Did the main process of pod {pod}'s container exit?"
+    eligible: [tetragon]
+    secondary: true
+  F5:
+    question: "Are create < exec < delete in timestamp order within tolerance?"
+    eligible: [audit, tetragon]
+    secondary: true
+    tolerance_s: "<G1>"
+  F6:
+    question: "Which identity performed the exec?"
+    eligible: [audit]
+    secondary: true

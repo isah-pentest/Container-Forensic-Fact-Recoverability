@@ -1,0 +1,22 @@
+# Target pod template (Blueprint v3.0, Sections 6.3, 7.1). The harness fills {ns} and {pod}.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{pod}"
+  namespace: "{ns}"
+  labels: {app.kubernetes.io/part-of: frx-target}
+  annotations:
+    sidecar.istio.io/inject: "false"
+spec:
+  terminationGracePeriodSeconds: 1
+  automountServiceAccountToken: false
+  restartPolicy: Never
+  containers:
+    - name: target
+      image: "<G2: image@sha256:digest with a real exec binary, e.g. coreutils echo>"
+      imagePullPolicy: IfNotPresent
+      # exits promptly on SIGTERM (PID 1 ignores SIGTERM unless trapped)
+      command: ["/bin/sh", "-c", "trap 'exit 0' TERM; while :; do sleep 1; done"]
+      resources:
+        requests: {cpu: "10m", memory: "16Mi"}
+        limits: {cpu: "100m", memory: "64Mi"}

@@ -1,0 +1,12 @@
+# Evidence never enters git (Blueprint v3.0, Section 16)
+evidence/
+stores/
+*.raw
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+.venv/

@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "frx/run_status/3.0.0",
+  "title": "FRX run_status.json (Blueprint v3.0, Section 10.2 and Appendix B)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["run_id", "cohort", "block", "slot", "cell", "arm", "load", "disposition",
+               "primary_failure_code", "secondary_failure_codes", "flags",
+               "replaces_run_id", "delay_observed_s", "protocol_version", "code_commit",
+               "closed_at", "notes"],
+  "properties": {
+    "run_id": {"type": "string", "pattern": "^(QUAL|PILOT|RUN|CAL)-[0-9]{4,}$"},
+    "cohort": {"enum": ["qualification", "pilot", "confirmatory", "calibration"]},
+    "block": {"type": ["string", "null"]},
+    "slot": {"type": ["integer", "null"], "minimum": 1},
+    "cell": {"enum": ["LC", "LD", "MC", "MD", "NC", "Q", "CAL"]},
+    "arm": {"enum": ["C", "D"]},
+    "load": {"type": "string", "minLength": 1},
+    "disposition": {"enum": ["SCORED", "UNSCORABLE", "PRE_ACTION_ABORT"]},
+    "primary_failure_code": {
+      "type": ["string", "null"],
+      "enum": [null, "PA-ISO", "PA-LOAD", "PA-SRC", "PA-HOST",
+               "UN-CREATE", "UN-EXEC", "UN-DELETE", "UN-TERM",
+               "CF-FOLLOW", "CF-READ", "CF-OOM", "CF-INTEG"]
+    },
+    "secondary_failure_codes": {
+      "type": "array",
+      "items": {"enum": ["PA-ISO", "PA-LOAD", "PA-SRC", "PA-HOST",
+                         "UN-CREATE", "UN-EXEC", "UN-DELETE", "UN-TERM",
+                         "CF-FOLLOW", "CF-READ", "CF-OOM", "CF-INTEG",
+                         "DV-DELAY", "DV-DROP"]}
+    },
+    "flags": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["precheck_pass", "load_check_pass", "action_verified", "termination_verified",
+                   "source_ready", "collector_complete", "integrity_pass", "arm_compliant",
+                   "carryover_flag", "oom_event", "drop_event", "outcome_observable"],
+      "properties": {
+        "precheck_pass": {"type": "boolean"},
+        "load_check_pass": {"type": "boolean"},
+        "action_verified": {"type": "boolean"},
+        "termination_verified": {"type": "boolean"},
+        "source_ready": {"type": "boolean"},
+        "collector_complete": {"type": "boolean"},
+        "integrity_pass": {"type": "boolean"},
+        "arm_compliant": {"type": "boolean"},
+        "carryover_flag": {"type": "boolean"},
+        "oom_event": {"type": "boolean"},
+        "drop_event": {"type": "boolean"},
+        "outcome_observable": {"type": "boolean"}
+      }
+    },
+    "replaces_run_id": {"type": ["string", "null"]},
+    "delay_observed_s": {"type": ["number", "null"]},
+    "protocol_version": {"type": "string", "pattern": "^3\\.[0-9]+(\\.[0-9]+)?$"},
+    "code_commit": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},
+    "closed_at": {"type": "string", "format": "date-time"},
+    "notes": {"type": "string"}
+  }
+}

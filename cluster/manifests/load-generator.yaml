@@ -1,0 +1,64 @@
+# Persistent rate-controlled load generator (Blueprint v3.0, Section 6.2).
+# Created at block start, deleted at block end. The orchestrator patches frx-load-rate per slot.
+apiVersion: v1
+kind: Namespace
+metadata: {name: frx-load}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: frx-load, namespace: frx-load}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: frx-load-read-rate, namespace: frx-load}
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["frx-load-rate"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: frx-load-read-rate, namespace: frx-load}
+subjects: [{kind: ServiceAccount, name: frx-load, namespace: frx-load}]
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: frx-load-read-rate}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: frx-load-rate, namespace: frx-load}
+data:
+  level: "L"
+  exec_per_s: "<G3>"
+  api_per_s: "<G3>"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: frx-loadgen-script, namespace: frx-load}
+data:
+  loadgen.py: "<filled by the orchestrator from cluster/load/loadgen.py; hash recorded per block>"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: frx-load, namespace: frx-load}
+spec:
+  replicas: 1   # <G3>
+  selector: {matchLabels: {app: frx-load}}
+  template:
+    metadata:
+      labels: {app: frx-load}
+      annotations: {sidecar.istio.io/inject: "false"}
+    spec:
+      serviceAccountName: frx-load
+      terminationGracePeriodSeconds: 1
+      containers:
+        - name: load
+          image: "<G1: python image@sha256:digest>"
+          imagePullPolicy: IfNotPresent
+          command: ["python3", "-u", "/opt/frx/loadgen.py"]
+          volumeMounts: [{name: script, mountPath: /opt/frx}]
+          resources:
+            requests: {cpu: "50m", memory: "32Mi"}
+            limits: {cpu: "500m", memory: "128Mi"}
+      volumes:
+        - name: script
+          configMap: {name: frx-loadgen-script}

@@ -1,0 +1,22 @@
+# Audit policy (Blueprint v3.0, Section 6.3). Frozen and hashed at G3.
+# RequestResponse only where the contract needs response bodies (UIDs) or exec parameters.
+apiVersion: audit.k8s.io/v1
+kind: Policy
+omitStages: ["RequestReceived"]
+rules:
+  # F1 / F3: pod create and delete with response objects (UID)
+  - level: RequestResponse
+    verbs: ["create", "delete"]
+    resources:
+      - group: ""
+        resources: ["pods"]
+  # F2-A: exec subresource (command parameters are in requestURI)
+  - level: RequestResponse
+    resources:
+      - group: ""
+        resources: ["pods/exec"]
+  # load generator traffic: metadata only, fixed namespace
+  - level: Metadata
+    namespaces: ["frx-load"]
+  # everything else: metadata (constant background across all cells)
+  - level: Metadata

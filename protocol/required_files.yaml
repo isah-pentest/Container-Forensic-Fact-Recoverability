@@ -1,0 +1,74 @@
+# Package completeness specification — Blueprint v3.0, Section 15.2 and 15.4.
+# Patterns are fnmatch globs relative to the run package root. Used by `frx verify-package`.
+always:
+  - identity.json
+  - run_status.json
+  - timing/event_journal.jsonl
+  - timing/clock_status.json
+  - source_store/start_state.json
+  - source_store/health_start.json
+  - source_store/health_end.json
+  - load/rate_setpoint.json
+  - load/load_check.json
+  - system/resources_1hz.csv
+  - system/kernel_log.txt
+  - system/collector_exits.json
+  - system/kubectl_pre.yaml
+  - system/kubectl_post.yaml
+  - console/orchestrator_stdout.log
+  - console/orchestrator_stderr.log
+
+scored_positive:
+  - ground_truth/harness_journal.jsonl
+  - ground_truth/exec_result.json
+  - ground_truth/termination_poll.jsonl
+  - sealed/truth/*
+  - acquisition/acquirer_config.json
+  - acquisition/acquirer_stdout.log
+  - acquisition/acquirer_stderr.log
+  - acquisition/read_receipts.jsonl
+  - acquired_raw/audit/*
+  - acquired_raw/tetragon/*
+  - sealed/growth_monitor_1hz.csv
+  - sealed/rotation_events.jsonl
+  - sealed/snapshot/audit/*
+  - sealed/snapshot/tetragon/*
+
+scored_control:
+  - ground_truth/harness_journal.jsonl
+  - acquisition/acquirer_config.json
+  - acquisition/read_receipts.jsonl
+  - acquired_raw/audit/*
+  - acquired_raw/tetragon/*
+  - sealed/growth_monitor_1hz.csv
+  - sealed/snapshot/audit/*
+  - sealed/snapshot/tetragon/*
+
+arm_C:
+  - acquisition/follower_lag_1hz.csv
+
+arm_D:
+  - system/process_table_pre_action.txt
+
+# Files that may legitimately be empty for a disposition (they must still exist).
+may_be_empty:
+  PRE_ACTION_ABORT:
+    - console/orchestrator_stderr.log
+  UNSCORABLE:
+    - console/orchestrator_stderr.log
+  SCORED:
+    - console/orchestrator_stderr.log
+    - acquisition/acquirer_stderr.log
+    - sealed/rotation_events.jsonl
+
+# Additional allowances keyed by primary failure code (a receipt explaining why is still required).
+may_be_empty_by_code:
+  CF-READ:
+    - acquired_raw/audit/*
+    - acquired_raw/tetragon/*
+  CF-FOLLOW:
+    - acquired_raw/audit/*
+    - acquired_raw/tetragon/*
+  CF-OOM:
+    - acquired_raw/audit/*
+    - acquired_raw/tetragon/*

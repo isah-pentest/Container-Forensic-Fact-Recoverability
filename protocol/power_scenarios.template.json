@@ -1,0 +1,9 @@
+{
+  "_comment": "Section 12.5. Fill pilot_informed from the G4 pilot and conservative = each cell 0.05 closer to the null, then run: frx power --scenarios <file> --seed <seed> --primary pilot_informed --conservative conservative --out protocol/power/search.csv",
+  "scenarios": [
+    {"name": "null",              "p": {"LC": 0.95, "LD": 0.95, "MC": 0.95, "MD": 0.95}},
+    {"name": "formula_predicted", "p": {"LC": 0.98, "LD": 0.98, "MC": 0.98, "MD": 0.50}},
+    {"name": "pilot_informed",    "p": {"LC": null, "LD": null, "MC": null, "MD": null}},
+    {"name": "conservative",      "p": {"LC": null, "LD": null, "MC": null, "MD": null}}
+  ]
+}

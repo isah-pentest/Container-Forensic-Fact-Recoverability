@@ -1,0 +1,7 @@
+# Versions with which the scaffold test suite passed (Python 3.13). Re-pin and record at G1;
+# the analysis environment is frozen with the protocol at G5.
+numpy==2.5.3
+scipy==1.18.1
+PyYAML==6.0.3
+jsonschema==4.26.0
+pytest==9.1.1
