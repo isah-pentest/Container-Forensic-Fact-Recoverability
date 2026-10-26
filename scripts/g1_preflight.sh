@@ -69,30 +69,41 @@ fi
 
 echo
 echo "== Resources visible to WSL / Linux"
-MEM_GB=$(awk '/MemTotal/{printf "%d", $2/1024/1024}' /proc/meminfo)
+MEM_MB=$(awk '/MemTotal/{printf "%d", $2/1024}' /proc/meminfo)
 CPUS=$(nproc)
-echo "memory: ${MEM_GB} GB   vCPUs: ${CPUS}"
-[ "$MEM_GB" -ge 12 ] && ok "memory >= 12 GB" || warn "memory ${MEM_GB} GB: raise 'memory=' in %UserProfile%\\.wslconfig (capacity run at G1 decides)"
+echo "memory: $(awk -v m="$MEM_MB" 'BEGIN{printf "%.1f", m/1024}') GiB   vCPUs: ${CPUS}"
+[ "$MEM_MB" -ge 11000 ] && ok "memory >= ~11 GiB (the 20-min capacity run at G1 decides)" \
+  || warn "memory below ~11 GiB: raise 'memory=' in %UserProfile%\\.wslconfig (capacity run at G1 decides)"
 [ "$CPUS" -ge 4 ] && ok "vCPUs >= 4" || warn "only ${CPUS} vCPUs visible"
 SWAP_GB=$(awk '/SwapTotal/{printf "%d", $2/1024/1024}' /proc/meminfo); echo "swap: ${SWAP_GB} GB (record it; swapping during runs distorts timing)"
 
 echo
 echo "== Tools"
+toolver() {
+  case "$1" in
+    python3) python3 --version;;
+    git) git --version;;
+    docker) docker --version;;
+    kind) kind version;;
+    kubectl) kubectl version --client 2>&1 | head -1;;
+    helm) helm version --short;;
+  esac
+}
 for t in python3 git docker kind kubectl helm; do
   if have "$t"; then
-    case "$t" in
-      python3) v="$(python3 --version 2>&1)";;
-      git) v="$(git --version)";;
-      docker) v="$(docker --version 2>&1)";;
-      kind) v="$(kind version 2>&1)";;
-      kubectl) v="$(kubectl version --client 2>&1 | head -1)";;
-      helm) v="$(helm version --short 2>&1)";;
-    esac
-    ok "$t: $v"
+    v="$(toolver "$t" 2>&1)"; rc=$?
+    if [ $rc -eq 0 ]; then ok "$t: $v"; else fail "$t is on PATH but does not run: $v"; fi
   else
     fail "$t not found"
   fi
 done
+if have docker; then
+  tgt="$(readlink -f "$(command -v docker)" 2>/dev/null)"
+  case "$tgt" in
+    /mnt/wsl/docker-desktop*|*docker-desktop*) warn "docker CLI comes from Docker Desktop integration ($tgt)";;
+    *) echo "docker CLI: $tgt";;
+  esac
+fi
 if have docker; then
   if docker info >/dev/null 2>&1; then
     ok "docker daemon reachable ($(docker info --format '{{.OperatingSystem}} / cgroup {{.CgroupVersion}}' 2>/dev/null))"
@@ -110,11 +121,17 @@ if have timedatectl && timedatectl show >/dev/null 2>&1; then
   echo "timedatectl: $(timedatectl show -p NTPSynchronized -p Timezone 2>/dev/null | tr '\n' ' ')"
 fi
 if have powershell.exe; then
-  W=$(powershell.exe -NoProfile -Command "[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()" 2>/dev/null | tr -d '\r')
+  W=$(powershell.exe -NoProfile -NonInteractive -Command "[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()" 2>/dev/null \
+      | tr -d '\r' | grep -oE '[0-9]{13}' | head -1)
   L=$(date +%s%3N)
   if [ -n "$W" ]; then
-    D=$(( L - W )); echo "WSL minus Windows clock: ${D} ms (includes ~0.3-1 s PowerShell start-up)"
-    [ "${D#-}" -lt 2000 ] && ok "clock skew small" || fail "WSL clock differs from Windows by ${D} ms (after sleep/hibernate: 'sudo hwclock -s' or restart WSL)"
+    D=$(( L - W )); A=${D#-}
+    echo "WSL minus Windows clock: ${D} ms (includes ~0.3-1 s PowerShell start-up)"
+    if [ "$A" -lt 2000 ]; then ok "clock skew small"
+    elif [ "$A" -lt 86400000 ]; then fail "WSL clock differs from Windows by ${D} ms (after sleep/hibernate: 'sudo hwclock -s' or 'wsl --shutdown')"
+    else warn "clock reading implausible (${D} ms); compare 'date -u' with Windows time manually"; fi
+  else
+    warn "could not read the Windows clock; compare 'date -u' with Windows time manually"
   fi
 else
   warn "powershell.exe not reachable; check WSL clock against Windows manually"
