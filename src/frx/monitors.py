@@ -62,21 +62,29 @@ class GrowthMonitor(_Sampler):
         return ["mono_ns", "wall_ns", "store", "name", "inode", "size", "mtime_ns"]
 
     def sample(self):
-        t_m, t_w = time.monotonic_ns(), time.time_ns()
-        rows = []
-        for store, d in self.store_dirs.items():
+        return sample_stores(self.store_dirs)
+
+
+def sample_stores(store_dirs: dict[str, Path]) -> list[list]:
+    """One metadata sample of every file in each store: [mono_ns, wall_ns, store, name, inode, size, mtime_ns]."""
+    t_m, t_w = time.monotonic_ns(), time.time_ns()
+    rows = []
+    for store, d in store_dirs.items():
+        try:
+            entries = list(os.scandir(d))
+        except FileNotFoundError:
+            continue
+        for e in entries:
             try:
-                entries = list(os.scandir(d))
+                st = e.stat(follow_symlinks=False)
             except FileNotFoundError:
-                continue
-            for e in entries:
-                try:
-                    st = e.stat(follow_symlinks=False)
-                except FileNotFoundError:
-                    continue          # deleted between listing and stat (rotation)
-                if e.is_file(follow_symlinks=False):
-                    rows.append([t_m, t_w, store, e.name, st.st_ino, st.st_size, st.st_mtime_ns])
-        return rows
+                continue          # deleted between listing and stat (rotation)
+            if e.is_file(follow_symlinks=False):
+                rows.append([t_m, t_w, store, e.name, st.st_ino, st.st_size, st.st_mtime_ns])
+    return rows
+
+
+GROWTH_HEADER = ["mono_ns", "wall_ns", "store", "name", "inode", "size", "mtime_ns"]
 
 
 def _meminfo() -> dict[str, int]:
@@ -159,11 +167,18 @@ def bytes_written(growth_csv: Path) -> dict[str, dict]:
     after old backups are deleted. A new life starts when an inode's size shrinks (the reused
     number now belongs to a new, smaller file). Renaming (active -> backup) keeps the life. Growth per life = last size - first size for lives present at the first sample,
     otherwise last size (the file started empty). Also returns the number of new files.
+    Valid only while every file lives longer than the sampling period (a file created and
+    deleted between two samples is never seen); the operating points enforce M / r >= 5 s.
     """
-    rows_by_t: dict[int, list] = {}
     with open(growth_csv) as fh:
-        for row in csv.DictReader(fh):
-            rows_by_t.setdefault(int(row["mono_ns"]), []).append(row)
+        return growth_from_rows(csv.DictReader(fh))
+
+
+def growth_from_rows(rows) -> dict[str, dict]:
+    """bytes_written() on rows already in memory (dicts with mono_ns, store, inode, size)."""
+    rows_by_t: dict[int, list] = {}
+    for row in rows:
+        rows_by_t.setdefault(int(row["mono_ns"]), []).append(row)
     times = sorted(rows_by_t)
     if not times:
         return {}

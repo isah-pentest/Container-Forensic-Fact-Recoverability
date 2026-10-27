@@ -1,0 +1,39 @@
+# Candidate settings tested by the qualification series Q (Blueprint v3.0, Sections 7.4, 18, 22.2).
+# These fill the contract's <G2> placeholders for Q only. G2 adopts each one into contract.yaml
+# and parameters.yaml only if it passes its rule on Q-a; otherwise it is changed and Q repeated.
+# Source of the candidates: G1 smoke test (protocol/gates/G1.md).
+harness_identity: "system:serviceaccount:frx-system:frx-harness"
+target_image_tag: "debian:trixie-slim"      # resolved to a digest when the series starts
+exec_binary: /usr/bin/echo
+readiness_timeout_s: 120                     # provisional; G3 sets 3 x max observed
+namespace_delete_timeout_s: 120              # provisional; G3 sets 3 x max observed
+control_idle_s: 10                           # provisional NC action duration; G3 sets the Q median
+
+fills:                                       # merged into contract.yaml for Q matching
+  facts:
+    F2:
+      audit:
+        verbs_accepted: [get, create]        # websocket exec is GET (seen at G1); SPDY clients POST
+        stages_accepted: [ResponseStarted, ResponseComplete]
+      tetragon:
+        match: {process.binary: /usr/bin/echo}
+        fallback_attribution: none
+    F3:
+      audit:
+        uid_required: false                  # G2 rule: required if present in >= 11/12 Q-a runs
+    F4:
+      tetragon: {event: process_exit, binary: /usr/bin/sleep, arguments: infinity}
+    F5:
+      tolerance_s: 1.0                       # provisional; G1 cross-source offsets were milliseconds
+
+# Primary scoring variant for Q (the one G2's 11/12 rules are applied to). F3 requires the harness
+# identity as actor: at G1 the kubelet (system:node:<node>) also deleted the target pod ~4.5 s after
+# the harness, and a fact credited from the kubelet's record would not show the harness's action.
+primary_variant:
+  f3_actor_required: true
+  f3_uid_required: false                     # follows fills.facts.F3.audit.uid_required
+
+# Variants scored side by side so G2 can apply its rules without re-running anything.
+score_variants:
+  f3_uid_required: [false, true]
+  f3_actor_required: [false, true]           # actor = harness_identity (G1: kubelet also deletes)

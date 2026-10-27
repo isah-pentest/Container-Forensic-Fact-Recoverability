@@ -19,6 +19,7 @@ CLUSTER_NAME = "frx"
 AUDIT_DIR_IN_NODE = "/var/log/kubernetes/audit"
 AUDIT_FILE_IN_NODE = f"{AUDIT_DIR_IN_NODE}/audit.json"
 POLICY_IN_NODE = "/etc/kubernetes/policies/audit-policy.yaml"
+WEBHOOK_KUBECONFIG_IN_NODE = "/etc/kubernetes/policies/audit-webhook.kubeconfig"
 TETRAGON_DIR_IN_NODE = "/var/log/tetragon"
 TETRAGON_FILE = "tetragon.log"
 
@@ -52,9 +53,25 @@ class StoreSizes:
                 raise ValueError(f"{name} must be >= 1 (Section 4.3 needs k >= 1)")
 
 
+def render_audit_webhook_kubeconfig(server_url: str) -> str:
+    """Kubeconfig for the audit webhook backend: the sealed reference observer (Section 3.4)."""
+    if not server_url.startswith(("http://", "https://")):
+        raise ValueError("webhook server must be an http(s) URL")
+    cfg = {"apiVersion": "v1", "kind": "Config", "current-context": "frx-reference",
+           "clusters": [{"name": "frx-reference", "cluster": {"server": server_url}}],
+           "users": [{"name": "apiserver", "user": {}}],
+           "contexts": [{"name": "frx-reference", "context": {"cluster": "frx-reference", "user": "apiserver"}}]}
+    return yaml.safe_dump(cfg, sort_keys=False)
+
+
 def render_kind_config(repo: Path, stores: Path, sizes: StoreSizes,
-                       node_image: str = KIND_V0_33_DEFAULT_IMAGE) -> str:
-    """kind Cluster config with a size-rotated, file-backed audit log and host-visible stores."""
+                       node_image: str = KIND_V0_33_DEFAULT_IMAGE,
+                       audit_webhook_kubeconfig: Path | None = None) -> str:
+    """kind Cluster config with a size-rotated, file-backed audit log and host-visible stores.
+
+    With audit_webhook_kubeconfig, the API server also sends every audit event (same policy) to
+    the reference receiver in batches of at most 1 s; the log backend is unchanged.
+    """
     sizes.check()
     if "@sha256:" not in node_image:
         raise ValueError("node image must be pinned by @sha256 digest")
@@ -73,6 +90,9 @@ def render_kind_config(repo: Path, stores: Path, sizes: StoreSizes,
                 "audit-log-maxsize": str(sizes.audit_max_mb),
                 "audit-log-maxbackup": str(sizes.audit_backups),
                 "audit-log-maxage": "365",   # age-based deletion effectively disabled
+                **({"audit-webhook-config-file": WEBHOOK_KUBECONFIG_IN_NODE,
+                    "audit-webhook-mode": "batch",
+                    "audit-webhook-batch-max-wait": "1s"} if audit_webhook_kubeconfig else {}),
             },
             "extraVolumes": [
                 {"name": "audit-policies", "hostPath": "/etc/kubernetes/policies",
@@ -95,6 +115,9 @@ def render_kind_config(repo: Path, stores: Path, sizes: StoreSizes,
             "extraMounts": [
                 {"hostPath": str(repo / "cluster" / "audit-policy.yaml"),
                  "containerPath": POLICY_IN_NODE, "readOnly": True},
+                *([{"hostPath": str(Path(audit_webhook_kubeconfig).resolve()),
+                    "containerPath": WEBHOOK_KUBECONFIG_IN_NODE, "readOnly": True}]
+                  if audit_webhook_kubeconfig else []),
                 {"hostPath": str(stores / "audit"), "containerPath": AUDIT_DIR_IN_NODE},
                 {"hostPath": str(stores / "tetragon"), "containerPath": TETRAGON_DIR_IN_NODE},
                 # Tetragon on kind reads host processes through /procHost (Tetragon quick start)

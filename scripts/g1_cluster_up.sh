@@ -5,7 +5,11 @@
 #
 # Usage: ./scripts/g1_cluster_up.sh [TETRAGON_CHART_VERSION]
 #   env: FRX_EVIDENCE (default ~/frx-evidence), FRX_STORES (default ~/frx-stores)
-# Store sizes are provisional (10 MB x 5 backups) until G3 fixes them by the Section 4.3 rule.
+#        FRX_AUDIT_MAX_MB, FRX_AUDIT_BACKUPS, FRX_TETRAGON_MAX_MB, FRX_TETRAGON_BACKUPS
+#          (default 10 MB x 5 backups each: provisional until G3 fixes them by Section 4.3)
+#        FRX_SIZES_FINAL=1 once G3 has fixed the sizes
+#        FRX_AUDIT_WEBHOOK=http://<kind gateway>:<port> to also send audit events to the
+#          reference receiver (start `frx ref-receiver` first; Section 3.4)
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 EVID="${FRX_EVIDENCE:-$HOME/frx-evidence}"
@@ -28,7 +32,10 @@ mkdir -p "$OUT" "$STORES/audit" "$STORES/tetragon"
 sudo -v   # audit files are root-only (0600); one password prompt up front
 
 step "render configs"
-python3 -m frx.cli cluster-config --stores "$STORES" --out-dir "$OUT" | tee "$OUT/render.json"
+python3 -m frx.cli cluster-config --stores "$STORES" --out-dir "$OUT" \
+  --audit-max-mb "${FRX_AUDIT_MAX_MB:-10}" --audit-backups "${FRX_AUDIT_BACKUPS:-5}" \
+  --tetragon-max-mb "${FRX_TETRAGON_MAX_MB:-10}" --tetragon-backups "${FRX_TETRAGON_BACKUPS:-5}" \
+  ${FRX_SIZES_FINAL:+--final} ${FRX_AUDIT_WEBHOOK:+--audit-webhook "$FRX_AUDIT_WEBHOOK"} | tee "$OUT/render.json"
 
 step "create kind cluster (pinned node image)"
 kind create cluster --config "$OUT/kind-config.yaml" --wait 180s 2>&1 | tee "$OUT/kind_create.log"

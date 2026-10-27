@@ -17,8 +17,11 @@ from pathlib import Path
 
 
 class Follower(threading.Thread):
+    _receipt_lock = threading.Lock()      # followers of several stores may share one receipts file
+
     def __init__(self, active_path: Path, out_raw: Path, receipts: Path,
-                 start_offset: int | None = None, poll_s: float = 0.1, chunk: int = 1 << 20):
+                 start_offset: int | None = None, poll_s: float = 0.1, chunk: int = 1 << 20,
+                 source: str | None = None):
         super().__init__(daemon=True, name=f"follower:{Path(active_path).name}")
         self.active_path = Path(active_path)
         self.out_raw = Path(out_raw)
@@ -38,12 +41,18 @@ class Follower(threading.Thread):
         self._seen_inodes: set[int] = set()
         self._seen_names: set[str] = set()   # backups already read (inode numbers get reused)
         self._start_wall = time.time()
+        self.source = source
+        self.position = 0                    # byte offset in the current inode (for the lag sampler)
+        self.current_inode = None
 
     # -------------------------------------------------------------- helpers
     def _receipt(self, **kw) -> None:
         kw.update(mono_ns=time.monotonic_ns(), wall_ns=time.time_ns())
-        with open(self.receipts_path, "a") as fh:
-            fh.write(json.dumps(kw) + "\n")
+        if self.source:
+            kw["source"] = self.source
+        with Follower._receipt_lock:
+            with open(self.receipts_path, "a") as fh:
+                fh.write(json.dumps(kw) + "\n")
 
     def _open_active(self, offset: int) -> None:
         fd = open(self.active_path, "rb")
@@ -52,6 +61,7 @@ class Follower(threading.Thread):
             offset = 0
         fd.seek(offset)
         self._fd, self._inode = fd, st.st_ino
+        self.current_inode, self.position = st.st_ino, offset
         self._seen_inodes.add(st.st_ino)
         self._receipt(event="open", inode=st.st_ino, offset=offset, size=st.st_size)
 
@@ -118,6 +128,7 @@ class Follower(threading.Thread):
                 stopping = self._stop_evt.is_set()
                 try:
                     self.bytes_written += self._drain(out)
+                    self.position = self._fd.tell()
                     try:
                         st = self.active_path.stat()
                     except FileNotFoundError:
@@ -161,6 +172,10 @@ class Follower(threading.Thread):
     def wait_started(self, timeout: float = 5.0) -> bool:
         return self._ready.wait(timeout) and not self.errors
 
+    def confirm_reading(self, timeout: float = 5.0) -> bool:
+        """ACQ_START (C): opened at the recorded offset, running, no errors."""
+        return self.wait_started(timeout) and self.is_alive() and self._fd is not None
+
     def stop_and_drain(self, timeout: float = 30.0) -> dict:
         """Signal stop; the loop drains to end-of-file once more before exiting."""
         self._stop_evt.set()
@@ -168,6 +183,6 @@ class Follower(threading.Thread):
         return self.summary()
 
     def summary(self) -> dict:
-        return {"path": str(self.active_path), "bytes_written": self.bytes_written,
+        return {"path": str(self.active_path), "source": self.source, "bytes_written": self.bytes_written,
                 "rotations": self.rotations, "gaps": self.gaps, "errors": self.errors,
                 "max_lag_bytes": self.max_lag_bytes, "alive": self.is_alive()}

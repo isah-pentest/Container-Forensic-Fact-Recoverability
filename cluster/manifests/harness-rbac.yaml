@@ -1,0 +1,33 @@
+# Dedicated harness identity (Blueprint v3.0, Sections 7.1, 15.6). Short-lived tokens only
+# (scripts/g2_harness_identity.sh); revoke after the study by deleting namespace frx-system.
+apiVersion: v1
+kind: Namespace
+metadata: {name: frx-system}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: frx-harness, namespace: frx-system}
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: frx-harness}
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["create", "get", "delete"]
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["create", "get", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create", "get"]      # websocket exec is a GET; older clients POST
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: frx-harness}
+subjects: [{kind: ServiceAccount, name: frx-harness, namespace: frx-system}]
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: frx-harness}

@@ -109,13 +109,21 @@ def cmd_headroom(a) -> int:
 def cmd_cluster_config(a) -> int:
     sizes = StoreSizes(a.audit_max_mb, a.audit_backups, a.tetragon_max_mb, a.tetragon_backups,
                        provisional=not a.final)
+    from .cluster import render_audit_webhook_kubeconfig
     out = Path(a.out_dir); out.mkdir(parents=True, exist_ok=True)
     for sub in ("audit", "tetragon"):
         (Path(a.stores) / sub).mkdir(parents=True, exist_ok=True)
-    (out / "kind-config.yaml").write_text(render_kind_config(REPO, Path(a.stores), sizes, a.node_image))
+    written = []
+    wh = None
+    if a.audit_webhook:
+        wh = out / "audit-webhook.kubeconfig"
+        wh.write_text(render_audit_webhook_kubeconfig(a.audit_webhook))
+        written.append(str(wh))
+    (out / "kind-config.yaml").write_text(render_kind_config(REPO, Path(a.stores), sizes, a.node_image, wh))
     (out / "tetragon-values.yaml").write_text(render_tetragon_values(sizes))
-    print(_json({"written": [str(out / "kind-config.yaml"), str(out / "tetragon-values.yaml")],
-                 "sizes": sizes.__dict__, "node_image": a.node_image}))
+    written += [str(out / "kind-config.yaml"), str(out / "tetragon-values.yaml")]
+    print(_json({"written": written, "sizes": sizes.__dict__, "node_image": a.node_image,
+                 "audit_webhook": a.audit_webhook}))
     return 0
 
 
@@ -179,6 +187,166 @@ def cmd_capacity_reevaluate(a) -> int:
     return 0 if rep["pass"] else 2
 
 
+# ---------------------------------------------------------------------- G2/G3 qualification
+def _evid(a) -> dict:
+    e = Path(a.evidence).expanduser()
+    q = e / "qualification"
+    return {"root": e, "q": q, "runs": q / "runs", "scoring": q / "scoring", "ledger": e / "ledger" / "attempt_ledger.csv",
+            "plan": q / "q_plan.json", "ops": q / "operating_points.json", "progress": q / "q_progress.jsonl"}
+
+
+def _qual_files():
+    import yaml
+    qual = yaml.safe_load((REPO / "protocol" / "qualification.yaml").read_text())
+    con = contract_mod.load_yaml(contract_mod.CONTRACT_PATH)
+    prm = contract_mod.load_yaml(contract_mod.PARAMETERS_PATH)
+    from .reconstruct import effective_contract
+    eff = effective_contract(con, qual["fills"])
+    eff["harness_identity"] = qual["harness_identity"]
+    return qual, eff, prm
+
+
+def cmd_ref_receiver(a) -> int:
+    from .acquisition.reference import run_receiver
+    host, port = a.listen.rsplit(":", 1)
+    run_receiver(host, int(port), Path(a.out).expanduser())
+    return 0
+
+
+def cmd_reconstruct(a) -> int:
+    from .reconstruct import reconstruct
+    staged = Path(a.staged)
+    con = json.loads((staged / "contract.json").read_text())
+    fa = reconstruct(staged, con)
+    warnings = fa.pop("_warnings")
+    from .integrity import write_once
+    write_once(Path(a.out), (json.dumps(fa, indent=2) + "\n").encode())
+    if a.warnings:
+        Path(a.warnings).parent.mkdir(parents=True, exist_ok=True)
+        write_once(Path(a.warnings), "".join(json.dumps(w) + "\n" for w in warnings).encode())
+    return 0
+
+
+def cmd_load_map(a) -> int:
+    from .orchestrator.qual import load_map
+    stores = {"audit": Path(a.stores) / "audit", "tetragon": Path(a.stores) / "tetragon"}
+    if len(a.exec_rates) != len(a.api_rates) or len(a.exec_rates) < 4:
+        print("refusing: --exec-rates and --api-rates need the same length (>= 4 settings)")
+        return 2
+    settings = [{"exec_per_s": e, "api_per_s": p} for e, p in zip(a.exec_rates, a.api_rates)]
+    res = load_map(REPO, stores, a.image, a.replicas, settings, measure_s=a.measure)
+    Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+    Path(a.out).write_text(_json(res))
+    print(_json({"written": a.out, "fit": res["fit"]}))
+    return 0
+
+
+def cmd_operating_points(a) -> int:
+    from .orchestrator.qual import operating_points
+    lm = json.loads(Path(a.load_map).read_text())
+    stores = {"audit": {"max_mb": a.audit_max_mb, "backups": a.audit_backups},
+              "tetragon": {"max_mb": a.tetragon_max_mb, "backups": a.tetragon_backups}}
+    _, _, prm = _qual_files()
+    t = prm["timing"]
+    ops = operating_points(lm["fit"], stores, t["delay_s"], a.action_s, a.exec_offset_s,
+                           tolerance=prm["load"]["manipulation_tolerance"])
+    ops.update(load_image=lm["image"], load_map=str(a.load_map), rationale=a.rationale)
+    Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+    Path(a.out).write_text(_json(ops))
+    print(_json({"written": a.out, "replicas": ops["replicas"], "problems": ops["problems"],
+                 "levels": {k: {"target": v["target_bytes_per_s"], "knob": v["knob"]} for k, v in ops["levels"].items()},
+                 "p_loss_at_r_M_+-20pct": {s: [round(v["p_loss_r_M_at_minus_tol"], 2), round(v["p_loss_r_M_at_plus_tol"], 2)]
+                                           for s, v in ops["per_store"].items()}}))
+    return 0 if not ops["problems"] else 2
+
+
+def cmd_qual_plan(a) -> int:
+    from .orchestrator.qual import make_plan
+    E = _evid(a)
+    ops = json.loads(E["ops"].read_text())
+    if E["plan"].exists():
+        print(f"refusing: {E['plan']} exists (a plan is written once)")
+        return 2
+    plan = make_plan(a.seed, ops["levels"])
+    plan["operating_points_sha256"] = __import__("hashlib").sha256(E["ops"].read_bytes()).hexdigest()
+    from .integrity import write_once
+    write_once(E["plan"], (_json(plan) + "\n").encode())
+    print(_json({"written": str(E["plan"]), "parts": {k: len(v) for k, v in plan["parts"].items()}}))
+    return 0
+
+
+def cmd_qual_run(a) -> int:
+    import hashlib
+    from .orchestrator.platform import KindPlatform
+    from .orchestrator.qual import run_part
+    from .orchestrator.run import RunConfig
+    E = _evid(a)
+    qual, _, prm = _qual_files()
+    plan = json.loads(E["plan"].read_text())
+    if plan["operating_points_sha256"] != hashlib.sha256(E["ops"].read_bytes()).hexdigest():
+        print("refusing: operating_points.json changed after the plan was written")
+        return 2
+    ops = json.loads(E["ops"].read_text())
+    t = prm["timing"]
+    E["runs"].mkdir(parents=True, exist_ok=True)
+    cfg = RunConfig(out_root=E["runs"], ledger=E["ledger"], protocol_version=str(prm["protocol_version"]),
+                    delay_s=t["delay_s"], grace_s=t["grace_s"], epsilon_s=t["epsilon_s"],
+                    delay_tolerance_s=t["delay_tolerance_s"], settle_s=t["settle_s"], warmup_s=t["load_warmup_s"],
+                    manipulation_window_s=t["manipulation_window_s"],
+                    manipulation_tolerance=prm["load"]["manipulation_tolerance"],
+                    namespace_delete_timeout_s=qual["namespace_delete_timeout_s"],
+                    control_idle_s=qual["control_idle_s"])
+    plat = KindPlatform(REPO, Path(a.stores).expanduser(), Path(a.harness_kubeconfig).expanduser(),
+                        a.target_image, qual["exec_binary"], ops["load_image"], qual["readiness_timeout_s"],
+                        audit_reference_file=Path(a.audit_reference).expanduser() if a.audit_reference else None,
+                        tetragon_reference=not a.no_tetragon_reference, harness_identity=qual["harness_identity"])
+    plat.code_commit()          # refuses a modified working tree before anything runs
+    res = run_part(a.part, plan, ops, cfg, plat, REPO, E["progress"], block_warmup_s=prm["timing"]["load_warmup_block_start_s"])
+    print(_json({k: v for k, v in res.items() if k != "runs"}))
+    return 0 if res.get("complete") else 2
+
+
+def cmd_qual_score(a) -> int:
+    from .reconstruct.pipeline import score_package, variant_opts
+    E = _evid(a)
+    qual, eff, prm = _qual_files()
+    variants = variant_opts(qual)
+    primary = {"f3_actor_required": bool(qual["primary_variant"]["f3_actor_required"]),
+               "f3_uid_required": bool(eff["facts"]["F3"]["audit"]["uid_required"])}
+    if primary["f3_uid_required"] != bool(qual["primary_variant"]["f3_uid_required"]):
+        print("refusing: primary_variant.f3_uid_required disagrees with fills F3.uid_required")
+        return 2
+    done = []
+    for rec in (json.loads(l) for l in open(E["progress"])):
+        if rec["disposition"] != "SCORED" or (E["scoring"] / rec["run_id"]).exists():
+            continue
+        r = score_package(E["runs"] / rec["run_id"], E["scoring"], eff, variants, primary,
+                          epsilon_s=prm["timing"]["epsilon_s"], grace_s=prm["timing"]["grace_s"],
+                          f5_tolerance_s=eff["facts"]["F5"]["tolerance_s"])
+        done.append(r)
+        print(_json(r))
+    print(_json({"scored_now": len(done)}))
+    return 0
+
+
+def cmd_qual_report(a) -> int:
+    import time
+    from .orchestrator.qual_report import report
+    E = _evid(a)
+    ops = json.loads(E["ops"].read_text())
+    rep = report(E["progress"], E["runs"], E["scoring"], ops)
+    path = E["q"] / f"g2g3_report_{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}.json"
+    path.write_text(_json(rep))
+    brief = {"written": str(path), "by_part": rep["by_part"],
+             "G2": {k: rep["G2"][k] for k in ("pass", "action_verified", "fact_correct_Q_a", "uid_present_Q_a",
+                                                "tetragon_route", "timeouts_rule", "false_attribution")},
+             "G3": {k: rep["G3"].get(k) for k in ("pass", "Q_b_compliant", "Q_c_direction_ok", "Q_c_within_band",
+                                                    "reference_drop_free")},
+             "leak_check": rep["leak_check"]["pass"]}
+    print(_json(brief))
+    return 0
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="frx", description="FRX protocol tools (Blueprint v3.0)")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -239,6 +407,7 @@ def main(argv=None) -> int:
     s.add_argument("--tetragon-backups", type=int, default=5)
     s.add_argument("--node-image", default=KIND_V0_33_DEFAULT_IMAGE)
     s.add_argument("--final", action="store_true", help="sizes fixed by the Section 4.3 rule (G3)")
+    s.add_argument("--audit-webhook", help="reference receiver URL, e.g. http://172.18.0.1:9880 (G3)")
     s.set_defaults(fn=cmd_cluster_config)
 
     s = sub.add_parser("fingerprint", help="platform fingerprint JSON (G1 and every session open)")
@@ -274,6 +443,67 @@ def main(argv=None) -> int:
     s = sub.add_parser("capacity-reevaluate", help="recompute a capacity verdict from preserved files")
     s.add_argument("run_dir")
     s.set_defaults(fn=cmd_capacity_reevaluate)
+
+    def _ev(sp):
+        sp.add_argument("--evidence", default="~/frx-evidence")
+
+    s = sub.add_parser("ref-receiver", help="audit webhook reference receiver (long-running; start before the cluster)")
+    s.add_argument("--listen", required=True, help="HOST:PORT, e.g. 172.18.0.1:9880 (kind network gateway)")
+    s.add_argument("--out", default="~/frx-stores/reference/audit_webhook.jsonl")
+    s.set_defaults(fn=cmd_ref_receiver)
+
+    s = sub.add_parser("reconstruct", help="blinded reconstruction of one staged input (used by qual-score)")
+    s.add_argument("staged")
+    s.add_argument("--out", required=True)
+    s.add_argument("--warnings")
+    s.set_defaults(fn=cmd_reconstruct)
+
+    s = sub.add_parser("load-map", help="store write rate vs load-generator rates (metadata only, G3 input)")
+    s.add_argument("--stores", required=True)
+    s.add_argument("--image", required=True, help="load image pinned by digest")
+    s.add_argument("--replicas", type=int, default=10)
+    # 2x2 factorial + centre: exec and API vary independently, so the fit can separate each
+    # knob's effect on each store (paired settings that rise together would be collinear)
+    s.add_argument("--exec-rates", type=float, nargs="+", default=[0, 10, 0, 10, 5], help="per replica")
+    s.add_argument("--api-rates", type=float, nargs="+", default=[1, 1, 20, 20, 10], help="per replica")
+    s.add_argument("--measure", type=int, default=60)
+    s.add_argument("--out", required=True)
+    s.set_defaults(fn=cmd_load_map)
+
+    s = sub.add_parser("operating-points", help="Section 4.3 rates from a load map and store sizes")
+    s.add_argument("--load-map", required=True)
+    s.add_argument("--audit-max-mb", type=int, required=True)
+    s.add_argument("--audit-backups", type=int, required=True)
+    s.add_argument("--tetragon-max-mb", type=int, required=True)
+    s.add_argument("--tetragon-backups", type=int, required=True)
+    s.add_argument("--action-s", type=float, default=8.0, help="ACTION_REQUEST to TERMINATION_CONFIRMED (s)")
+    s.add_argument("--exec-offset-s", type=float, default=5.0, help="ACTION_REQUEST to exec (s)")
+    s.add_argument("--rationale", required=True, help="cited reason for the store sizes (Section 4.3 item 1)")
+    s.add_argument("--out", required=True)
+    s.set_defaults(fn=cmd_operating_points)
+
+    s = sub.add_parser("qual-plan", help="write the seeded Q plan once (needs operating_points.json)")
+    s.add_argument("--seed", type=int, required=True)
+    _ev(s)
+    s.set_defaults(fn=cmd_qual_plan)
+
+    s = sub.add_parser("qual-run", help="run or resume one Q part (use scripts/g2_qual_part.sh)")
+    s.add_argument("--part", required=True, choices=["shakedown", "Q-a", "Q-b", "Q-c"])
+    s.add_argument("--stores", required=True)
+    s.add_argument("--harness-kubeconfig", required=True)
+    s.add_argument("--target-image", required=True, help="target image pinned by digest")
+    s.add_argument("--audit-reference", help="receiver file of the audit webhook reference observer")
+    s.add_argument("--no-tetragon-reference", action="store_true")
+    _ev(s)
+    s.set_defaults(fn=cmd_qual_run)
+
+    s = sub.add_parser("qual-score", help="blinded reconstruction and scoring of every unscored Q package")
+    _ev(s)
+    s.set_defaults(fn=cmd_qual_score)
+
+    s = sub.add_parser("qual-report", help="G2 and G3 criteria from the Q packages and scores")
+    _ev(s)
+    s.set_defaults(fn=cmd_qual_report)
 
     a = p.parse_args(argv)
     return a.fn(a)
