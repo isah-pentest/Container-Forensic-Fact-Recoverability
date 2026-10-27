@@ -41,10 +41,10 @@ def _repo(tmp_path):
 
 def test_freeze_then_detect_changes_and_registration(tmp_path):
     repo, git = _repo(tmp_path)
-    rec = write_freeze(repo, check_readiness=False)
+    rec = write_freeze(repo, check_readiness=False, run_tests=False)
     assert rec["code"]["files"] == 1 and check_freeze(repo)["ok"]
     with pytest.raises(FileExistsError):
-        write_freeze(repo, check_readiness=False)                  # never re-frozen
+        write_freeze(repo, check_readiness=False, run_tests=False)                  # never re-frozen
     r = check_ready_for_run_ids(repo)
     assert not r["ok"] and any("registration" in p for p in r["problems"])
     write_registration(repo, "OSF Registries", "https://osf.io/abcde", "2026-10-27T09:00:00Z")
@@ -60,7 +60,7 @@ def test_freeze_refuses_dirty_tree(tmp_path):
     repo, git = _repo(tmp_path)
     (repo / "src" / "x.py").write_text("x = 3\n")
     with pytest.raises(RuntimeError, match="commit everything"):
-        write_freeze(repo, check_readiness=False)
+        write_freeze(repo, check_readiness=False, run_tests=False)
 
 
 def test_sign_test_size_lattice():
@@ -76,3 +76,13 @@ def test_simulated_null_matches_exact_size():
     r = power_at(Scenario("n", {"LC": .5, "LD": .5, "MC": .5, "MD": .5}), 12, 0.5, 600, 2000, 3)
     se = (r["exact_null_size"] * (1 - r["exact_null_size"]) / 600) ** 0.5
     assert abs(r["power"] - r["exact_null_size"]) <= 3 * se and r["power"] <= 0.05
+
+
+def test_freeze_refuses_when_tests_fail(tmp_path):
+    repo, git = _repo(tmp_path)
+    (repo / "tests").mkdir()
+    (repo / "tests" / "test_x.py").write_text("def test_fails():\n    assert False\n")
+    git("add", "-A"); git("commit", "-qm", "failing test")
+    with pytest.raises(RuntimeError, match="test suite failed"):
+        write_freeze(repo, check_readiness=False, run_tests=True)
+    assert not (repo / "protocol" / "FREEZE.json").exists()

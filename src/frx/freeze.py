@@ -52,7 +52,16 @@ def _fp(repo: Path) -> Path:
     return Path(repo) / "protocol" / "FREEZE.json"
 
 
-def write_freeze(repo: Path = REPO_ROOT, check_readiness: bool = True) -> dict:
+def run_test_suite(repo: Path) -> dict:
+    """Section 18 G5 'tests pass': the full suite, run by the freeze itself."""
+    import sys
+    r = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"], cwd=str(repo),
+                       capture_output=True, text=True)
+    lines = [l for l in r.stdout.strip().splitlines() if l.strip()]
+    return {"returncode": r.returncode, "summary": lines[-1] if lines else "", "ok": r.returncode == 0}
+
+
+def write_freeze(repo: Path = REPO_ROOT, check_readiness: bool = True, run_tests: bool = True) -> dict:
     if _fp(repo).exists():
         raise FileExistsError("FREEZE.json exists; a frozen protocol is never re-frozen (new version instead)")
     if check_readiness:
@@ -63,10 +72,13 @@ def write_freeze(repo: Path = REPO_ROOT, check_readiness: bool = True) -> dict:
                            capture_output=True, text=True).stdout.strip()
     if dirty:
         raise RuntimeError(f"commit everything before freezing:\n{dirty}")
+    tests = run_test_suite(repo) if run_tests else {"ok": True, "summary": "not run (unit test of freeze)"}
+    if not tests["ok"]:
+        raise RuntimeError(f"refusing to freeze: test suite failed ({tests['summary']})")
     head = subprocess.run(["git", "-c", "safe.directory=*", "-C", str(repo), "rev-parse", "HEAD"],
                           capture_output=True, text=True).stdout.strip()
     rec = {"protocol_version": "3.0", "frozen_at": datetime.now(timezone.utc).isoformat(),
-           "base_commit": head, **snapshot(repo)}
+           "base_commit": head, "tests": tests["summary"], **snapshot(repo)}
     _fp(repo).write_text(json.dumps(rec, indent=2) + "\n")
     return rec
 

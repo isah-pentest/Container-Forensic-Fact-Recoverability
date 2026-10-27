@@ -34,9 +34,8 @@ git add -A && git commit -m "G5: master seed (NIST beacon) and randomization sch
 
 ## 5. Freeze, then tag
 ```bash
-pytest -q
 python3 -m frx.cli freeze-check          # nothing unresolved
-python3 -m frx.cli freeze                # protocol/FREEZE.json
+python3 -m frx.cli freeze                # runs the full test suite; refuses unless it passes; writes FREEZE.json
 git add -A && git commit -m "G5: FREEZE.json"
 git tag -a protocol-v3.0-frozen -m "Protocol v3.0 frozen"
 ```

@@ -7,11 +7,12 @@ def test_repo_contract_structure():
     assert c.check_parameters(c.load_yaml(c.PARAMETERS_PATH)) == []
 
 
-def test_placeholders_block_freeze_until_resolved():
-    # After G2/G3 no G1/G2 value remains; the G5 values block freeze until they are set.
+def test_no_value_before_g5_is_still_open():
+    # Gate-state independent: G1-G4 values are fixed; G5 values may be open or fixed. Freeze
+    # refusal while placeholders remain is tested in test_unresolved_detects_placeholders and
+    # test_freeze_g5 (a test that asserted the G5 values were still open went stale at G5).
     res = c.freeze_readiness()
-    assert not [u for u in res["unresolved"] if "<G1>" in u or "<G2>" in u]
-    assert {"design.master_seed = <G5>", "design.n_blocks = <G5>"} <= set(res["unresolved"])
+    assert [u for u in res["unresolved"] if "<G5>" not in u] == []
 
 
 def test_unresolved_detects_placeholders():

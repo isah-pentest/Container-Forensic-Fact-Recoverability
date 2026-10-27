@@ -505,7 +505,8 @@ def cmd_seed_record(a) -> int:
 def cmd_freeze(a) -> int:
     from .freeze import write_freeze
     rec = write_freeze()
-    print(_json({"written": "protocol/FREEZE.json", "base_commit": rec["base_commit"], "code": rec["code"]}))
+    print(_json({"written": "protocol/FREEZE.json", "base_commit": rec["base_commit"], "tests": rec["tests"],
+                 "code": rec["code"]}))
     return 0
 
 
