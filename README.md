@@ -2,7 +2,7 @@
 
 Protocol tooling for **Forensic Fact Recoverability After Pod Termination: Effects of Acquisition Timing and Background Event Load on Retained Kubernetes Audit and eBPF Telemetry** — Blueprint Manual v3.0 (design-locked), in `protocol/`.
 
-**Status:** `g0-scaffold`. Design locked; parameters are set at gates G1–G5 by the rules in Blueprint Section 22. No confirmatory (`RUN-`) IDs may be issued until `protocol/FREEZE.json` exists.
+**Status:** `g1-platform` (G1 passed 2026-10-26; see `protocol/gates/G1.md`). Design locked; parameters are set at gates G1–G5 by the rules in Blueprint Section 22. No confirmatory (`RUN-`) IDs may be issued until `protocol/FREEZE.json` exists.
 
 ## Ground rules
 
