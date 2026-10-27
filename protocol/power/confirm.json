@@ -1,0 +1,73 @@
+{
+  "B": 16,
+  "sigma_b": 0.5,
+  "n_sims": 2000,
+  "n_draws": 2000,
+  "seed": 20261028,
+  "rows": {
+    "pilot_informed": {
+      "scenario": "pilot_informed",
+      "B": 16,
+      "sigma_b": 0.5,
+      "n_sims": 2000,
+      "n_draws": 2000,
+      "power": 0.996,
+      "mc_se": 0.0014113823011501884,
+      "fallback_rate": 1.0,
+      "seed": 20268947,
+      "exact_null_size": 0.023461929321289064
+    },
+    "conservative": {
+      "scenario": "conservative",
+      "B": 16,
+      "sigma_b": 0.5,
+      "n_sims": 2000,
+      "n_draws": 2000,
+      "power": 0.786,
+      "mc_se": 0.009170714257897256,
+      "fallback_rate": 0.7725,
+      "seed": 20276866,
+      "exact_null_size": 0.023478126525878905
+    },
+    "null_calibration": {
+      "scenario": "null_calibration",
+      "B": 16,
+      "sigma_b": 0.5,
+      "n_sims": 2000,
+      "n_draws": 2000,
+      "power": 0.027,
+      "mc_se": 0.0036242930345103167,
+      "fallback_rate": 0.0025,
+      "seed": 20284785,
+      "exact_null_size": 0.027819376707077025
+    },
+    "null": {
+      "scenario": "null",
+      "B": 16,
+      "sigma_b": 0.5,
+      "n_sims": 2000,
+      "n_draws": 2000,
+      "power": 0.0195,
+      "mc_se": 0.0030919047527373806,
+      "fallback_rate": 0.233,
+      "seed": 20292704,
+      "exact_null_size": 0.02078636932373047
+    }
+  },
+  "targets": {
+    "primary": 0.8,
+    "conservative": 0.7,
+    "band_as_written": [
+      0.035,
+      0.065
+    ],
+    "calibration_tolerance": 0.011031979216812387
+  },
+  "checks": {
+    "primary": true,
+    "conservative": true,
+    "type_one_matches_exact_size": true,
+    "type_one_le_alpha": true
+  },
+  "pass": true
+}
