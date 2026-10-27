@@ -69,11 +69,11 @@ def f2_timeline(tl: dict) -> str:
         x = ax(rel(ns))
         if ax.p0 <= x <= ax.p1:
             c.line(x, 120, x, 140, MUTED, 1)
-    for ns in tl.get("deletions", []):
-        x = ax(rel(ns))
-        if ax.p0 <= x <= ax.p1:
-            c.circle(x, 130, 3.5, BAD)
-    c.text(860, 44, "| audit rotation   ● backup deleted", 10, "end", MUTED)
+    for ns in tl.get("deletions", []):          # wall_ns = last sample that still saw the file (1 Hz)
+        x0, x1 = ax(rel(ns)), ax(rel(ns) + 1.0)
+        if ax.p0 <= x0 <= ax.p1:
+            c.rect(x0, 126, max(x1 - x0, 2), 8, BAD, "none")
+    c.text(860, 44, "| audit rotation (first sample on new file)   ▬ backup deleted within this 1 s sample interval", 10, "end", MUTED)
     return c.render()
 
 
@@ -116,7 +116,8 @@ def f4_deltas(primary: dict, mie: float = -0.25) -> str:
         if hi > ax.hi:
             c.arrow(ax(chi) - 8, y, ax(chi), y)
         c.circle(ax(e["estimate"]), y, 5, BAD if i == 0 else MUTED)
-        p = f", p = {e['p_value']:.3f}" if "p_value" in e else ""
+        tested = e.get("tested", True) if i == 1 else i == 0
+        p = f", p = {e['p_value']:.3f}" if tested and "p_value" in e else ("; not tested" if i == 1 else "")
         c.text(680, y + 4, f"{e['estimate']:+.3f} [{lo:+.3f}, {hi:+.3f}]{p}", 10, "start", MUTED)
     return c.render()
 
@@ -182,9 +183,10 @@ def f7_calibration(e3: dict) -> str:
             x, y = ax(v["mean_p_formula"]), ay(v["lost"] / v["n"])
             lo, hi = v["wilson95"]
             c.line(x, ay(lo), x, ay(hi), col, 1)
-            c.circle(x, y, 4.5, col)
-        c.circle(650, 70 + k * 18, 4.5, col)
+            c.circle(x, y, 3 + 2.2 * k, "none", col)
+        c.circle(650, 70 + k * 18, 3 + 2.2 * k, "none", col)
         c.text(660, 74 + k * 18, f"{key} (Brier {d['M26_brier_formula']:.3f})", 11)
         k += 1
-    c.text(355, 428, "one point per write-rate level (confirmatory L, M and CAL1–CAL4); delayed-read runs only", 10, "middle", MUTED)
+    c.text(355, 414, "one point per write-rate level (confirmatory L, M and CAL1–CAL4); delayed-read runs only", 10, "middle", MUTED)
+    c.text(355, 428, "hollow rings of increasing size: coincident points of different series remain visible", 10, "middle", MUTED)
     return c.render()

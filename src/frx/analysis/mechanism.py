@@ -198,21 +198,47 @@ def _stage_and_score(pkg: Path, src_file: Path, source: str, contract: dict, tru
     return tgt, score_identity(tgt["facts"], truth, contract_opts(contract))
 
 
-def _keys_in_acquired(pkg: Path, source: str) -> set:
-    keys = set()
+def _record_kind(ev: dict) -> str | None:
+    """The record type a key belongs to: the audit stage, or the Tetragon event type. The same auditID
+    occurs in several stages and the same exec_id in process_exec and process_exit, so presence of a
+    key alone does not show that the matched record itself was acquired."""
+    if ev.get("auditID"):
+        return f"audit:{ev.get('stage')}"
+    for kind in ("process_exec", "process_exit"):
+        if ev.get(kind):
+            return kind
+    return None
+
+
+def _ref_keys(ref_file: Path, answers: list[dict]) -> set:
+    """(key, kind) of each reference-observer record behind a CORRECT reference answer."""
+    lines = {a["evidence"].get("line") for a in answers if a.get("evidence")}
+    out = set()
+    with open(ref_file, "rb") as fh:
+        for i, line in enumerate(fh, 1):
+            if i in lines:
+                ev = json.loads(line)
+                key = ev.get("auditID") or next((((ev.get(k) or {}).get("process") or {}).get("exec_id")
+                                                 for k in ("process_exec", "process_exit") if ev.get(k)), None)
+                out.add((key, _record_kind(ev)))
+    return out
+
+
+def _keys_in_acquired(pkg: Path, source: str) -> dict:
+    """(key, kind) -> 'file:line' of every record in the acquired bytes of one source."""
+    keys = {}
     for p in sorted((Path(pkg) / "acquired_raw" / source).glob("*.raw")):
         with open(p, "rb") as fh:
-            for line in fh:
+            for n, line in enumerate(fh, 1):
                 try:
                     ev = json.loads(line)
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     continue
-                if source == "audit" and ev.get("auditID"):
-                    keys.add(ev["auditID"])
-                for kind in ("process_exec", "process_exit"):
-                    pid = ((ev.get(kind) or {}).get("process") or {}).get("exec_id")
-                    if pid:
-                        keys.add(pid)
+                kind = _record_kind(ev)
+                key = ev.get("auditID") if source == "audit" else \
+                    ((ev.get(kind) or {}).get("process") or {}).get("exec_id") if kind else None
+                if key and kind:
+                    keys.setdefault((key, kind), f"{p.name}:{n}")
     return keys
 
 
@@ -249,10 +275,16 @@ def loss_stages(ev: Evidence) -> dict:
                     if scored["facts"][fact]["states"][src] != "CORRECT":
                         rec["stage"] = "NOT_EMITTED"
                     else:
-                        keys = {a["evidence"].get("auditID") or a["evidence"].get("exec_id")
-                                for a in ans["facts"][fact][src]}
-                        if keys & _keys_in_acquired(pkg, src):
+                        refk = _ref_keys(pkg / "sealed" / "reference" / ref_files[src], ans["facts"][fact][src])
+                        keys = {k for k, _ in refk}
+                        acq = _keys_in_acquired(pkg, src)
+                        same = sorted(acq[k] for k in refk if k in acq)
+                        other = sorted(f"{kd}@{acq[(k, kd)]}" for (k, kd) in acq if k in keys and (k, kd) not in refk)
+                        rec["matched_record_kinds"] = sorted(kd for _, kd in refk if kd)
+                        rec["same_key_other_records_acquired"] = other
+                        if same:
                             rec["stage"] = "NOT_MATCHED"
+                            rec["acquired_at"] = same
                         else:
                             M = ev.store_capacity()[src]["M"]
                             rate = store_rate(rows, src, times[fact] - 15 * 10**9, t_read)

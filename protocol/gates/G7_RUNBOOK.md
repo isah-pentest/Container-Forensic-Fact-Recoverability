@@ -29,6 +29,9 @@ M14–M24, sensitivity S1–S9, E3 headroom calibration, E4 loss stages, qualifi
 `runs.csv`, `e3_headroom.csv`, `e4_loss_stages.csv`, `claims_register.csv`, `tables/T1–T8`
 (CSV and Markdown), `figures/F1–F7.svg`, `SHA256SUMS`.
 
+Each analysis commit gets its own set; earlier sets stay in place (write-once). The G7 notes name
+the set the manuscript cites and list superseded sets with the reason.
+
 ## 3. Raw-to-fact audit (≥ 10 % of runs, stratified by cell; by a person)
 ```bash
 python3 -m frx.analysis audit-sample        # -> analysis_outputs/raw_to_fact_audit.csv (seed = master_seed + 7)

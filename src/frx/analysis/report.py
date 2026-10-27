@@ -53,7 +53,7 @@ def _csv_text(rows: list[dict]) -> str:
     if not rows:
         return ""
     b = io.StringIO()
-    keys = list(rows[0].keys())
+    keys = list(dict.fromkeys(k for r in rows for k in r))      # union of columns, first-seen order
     w = csv.DictWriter(b, fieldnames=keys, lineterminator="\n", extrasaction="ignore")
     w.writeheader()
     for r in rows:

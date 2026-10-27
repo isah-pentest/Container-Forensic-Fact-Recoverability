@@ -25,6 +25,10 @@ def _ci(t) -> str:
     return f"[{t[0]:.3f}, {t[1]:.3f}]" if t else ""
 
 
+def _num(v, fmt: str) -> str:
+    return "n/a" if v is None or v != v else format(v, fmt)
+
+
 def build(res: dict) -> dict[str, tuple[list[str], list[list]]]:
     prm, prim, sec, val, sens = res["params"], res["primary"], res["secondary"], res["validity"], res["sensitivity"]
     T: dict = {}
@@ -57,13 +61,15 @@ def build(res: dict) -> dict[str, tuple[list[str], list[list]]]:
                        [[c, f"{prim['cells'][c]['x']}/{prim['cells'][c]['n']}", f"{prim['cells'][c]['p']:.3f}",
                          _ci(prim["cells"][c]["wilson95"])] for c in CELLS] +
                        [["Δ_A (H1)", f"{h1['estimate']:+.4f}", f"p = {h1['p_value']:.4f} ({h1['test']['method']})",
-                         f"{_ci(h1['ci_reported'])} ({h1['ci_rule']}); block t {_ci(h1['ci_t'])}"],
+                         f"{_ci(h1['ci_reported'])} ({h1['ci_rule']})"],
                         ["δ_obs (D runs)", "", "", "; ".join(f"{c}: median {v['median']:.4f} s, range {v['min']:.4f}–{v['max']:.4f}"
                                                          for c, v in dl.items() if v.get("n"))]])
     m7 = sec["M7_per_fact_recovery"]
     e2 = sec["E2_F2_sources"]
     T["T5_secondary"] = (["Quantity", "Value"],
-                         [["Δ_S (H2, estimate only)", f"{prim['H2']['estimate']:+.4f} {_ci(prim['H2']['ci_reported'])}"],
+                         [["Δ_A block-t CI (not the reported interval; the structure rule selected MOVER-Wilson)",
+                           _ci(prim["H1"]["ci_t"])],
+                          ["Δ_S (H2, estimate only)", f"{prim['H2']['estimate']:+.4f} {_ci(prim['H2']['ci_reported'])}"],
                           ["Δ_AS (E1, exploratory)", f"{prim['E1_interaction']['estimate']:+.4f} {_ci(prim['E1_interaction']['ci_reported'])}"]] +
                          [[f"π {f} in {c}", m7[c][f]["text"]] for c in CELLS for f in ("F1", "F2", "F3")] +
                          [["F2 paired (n11, n10, n01, n00)", f"{e2['pooled']['n11']}, {e2['pooled']['n10']}, {e2['pooled']['n01']}, {e2['pooled']['n00']}"],
@@ -90,8 +96,9 @@ def build(res: dict) -> dict[str, tuple[list[str], list[list]]]:
         h = v.get("H1") or {}
         s_rows.append([f"S8-{src}", v["rule"], "—", f"{h.get('estimate', float('nan')):+.4f}", f"{h.get('p_value', float('nan')):.4f}"])
     s3 = sens["S3"]["spearman"]
-    s_rows.append(["S3", sens["S3"]["rule"], "—", f"ρ = {s3['rho']}", f"{s3['p']}"])
-    s_rows.append(["S6", sens["S6"]["rule"], "—", str(sens["S6"]["by_multiplier"]), ""])
+    s_rows.append(["S3", sens["S3"]["rule"], "—", f"ρ = {_num(s3['rho'], '+.3f')}", _num(s3['p'], '.3f')])
+    s_rows.append(["S6", sens["S6"]["rule"], "—", "; ".join(
+        f"{m}×: " + ", ".join(f"{k} {v}" for k, v in sorted(d.items())) for m, d in sens["S6"]["by_multiplier"].items()), ""])
     s_rows.append(["S9", sens["S9"]["rule"], "—", f"{sens['S9']['mover_wilson'][0]:+.4f} {_ci(sens['S9']['mover_wilson'][1:])}", ""])
     pw = res.get("power") or {}
     s_rows.append(["Power at B", f"pilot_informed {pw.get('rows', {}).get('pilot_informed', {}).get('power')}, "
