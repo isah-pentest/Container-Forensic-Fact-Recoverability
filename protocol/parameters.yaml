@@ -57,7 +57,7 @@ design:                      # locked
   controls_per_block: 1
   b_max: 24
   n_blocks: 16
-  master_seed: "<G5>"
+  master_seed: 864067897543811042
   pilot_blocks: 3
   qualification: {q_a_runs: 12, q_b_runs: 12, q_c_rates: 3, q_c_runs_per_rate: 3}
   calibration: {rates: 4, runs_per_rate: 4, target_h_f1: [2.0, 1.2, 0.8, 0.5]}
