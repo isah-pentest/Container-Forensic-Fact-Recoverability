@@ -25,6 +25,9 @@ def test_confirm_reports_checks():
     assert r["rows"]["p"]["power"] > 0.8 and r["rows"]["cal"]["power"] < 0.12
 
 
+PARAMS_TEXT = 'protocol_version: "3.0"\n'
+
+
 def _repo(tmp_path):
     def git(*a):
         subprocess.run(["git", "-C", str(tmp_path), *a], check=True, capture_output=True)
@@ -33,6 +36,7 @@ def _repo(tmp_path):
     for f in PROTOCOL_FILES:
         (tmp_path / f).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / f).write_text(f"content of {f}\n")
+    (tmp_path / "protocol" / "parameters.yaml").write_text(PARAMS_TEXT)
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "x.py").write_text("x = 1\n")
     git("add", "-A"); git("commit", "-qm", "base")
@@ -51,7 +55,7 @@ def test_freeze_then_detect_changes_and_registration(tmp_path):
     assert check_ready_for_run_ids(repo)["ok"]
     (repo / "protocol" / "parameters.yaml").write_text("changed\n")
     assert check_freeze(repo)["problems"] == ["protocol/parameters.yaml changed"]
-    (repo / "protocol" / "parameters.yaml").write_text("content of protocol/parameters.yaml\n")
+    (repo / "protocol" / "parameters.yaml").write_text(PARAMS_TEXT)
     (repo / "src" / "x.py").write_text("x = 2\n")
     assert not check_freeze(repo)["ok"]
 

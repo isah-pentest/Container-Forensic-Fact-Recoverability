@@ -524,6 +524,133 @@ def cmd_freeze_verify(a) -> int:
     return 0 if r["ok"] else 2
 
 
+# ---------------------------------------------------------------------- v3.0.1: amendment, G6 cohort, calibration
+def cmd_amend_begin(a) -> int:
+    from .freeze import amend_begin
+    print(_json(amend_begin(REPO)))
+    print("now: git add -A && git commit -m 'Amendment: v3.0 freeze and registration moved to freeze_history'")
+    return 0
+
+
+def _kind_platform(a, prm: dict, con: dict):
+    from .orchestrator.platform import KindPlatform
+    t = prm["timing"]
+    return KindPlatform(REPO, Path(a.stores).expanduser(), Path(a.harness_kubeconfig).expanduser(),
+                        prm["target_pod"]["image_digest"], prm["target_pod"]["exec_binary"],
+                        prm["load"]["image_digest"], t["readiness_timeout_s"],
+                        audit_reference_file=Path(a.audit_reference).expanduser() if a.audit_reference else None,
+                        tetragon_reference=bool(prm["stores"]["reference_observer"]["tetragon_grpc"]),
+                        harness_identity=con["harness_identity"], termination_timeout_s=t["termination_timeout_s"])
+
+
+def _cohort_paths(a) -> dict:
+    e = Path(a.evidence).expanduser()
+    return {"root": e, "runs": e / "runs", "sessions": e / "sessions", "scoring": e / "scoring",
+            "progress": e / "sessions" / "confirmatory_progress.jsonl", "control": e / "sessions" / "control_checks.jsonl",
+            "analysis": e / "analysis_outputs", "lock": e / "scoring" / "scores_lock.json",
+            "ledger": e / "ledger" / "attempt_ledger.csv",
+            "cal": e / "calibration", "cal_runs": e / "calibration" / "runs", "cal_sessions": e / "calibration" / "sessions",
+            "cal_scoring": e / "calibration" / "scoring", "cal_schedule": e / "calibration" / "calibration_schedule.csv",
+            "cal_progress": e / "calibration" / "calibration_progress.jsonl"}
+
+
+def _session_run(a, prefix: str, cohort: str, runs_dir: Path, sessions_dir: Path, progress: Path,
+                 replica_sub: str, label: str, body) -> int:
+    from .fingerprint import collect
+    from .orchestrator.block import BlockContext, close_session, open_session, run_config
+    C = _cohort_paths(a)
+    prm = contract_mod.load_yaml(contract_mod.PARAMETERS_PATH)
+    con = contract_mod.load_yaml(contract_mod.CONTRACT_PATH)
+    replica = Path(a.replica).expanduser()
+    if not replica.is_dir():
+        print(f"refusing: replica root {replica} is not a mounted directory")
+        return 2
+    plat = _kind_platform(a, prm, con)
+    plat.code_commit()
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    cfg = run_config(prm, runs_dir, C["ledger"])
+    files = [contract_mod.CONTRACT_PATH, contract_mod.PARAMETERS_PATH, REPO / "protocol" / "FREEZE.json",
+             REPO / "protocol" / "registration.json", REPO / "protocol" / "randomization_schedule.csv"]
+    sess = open_session(sessions_dir, plat, C["ledger"], collect(REPO), prm["host"]["fingerprint_stable_hash"],
+                        files, label)
+    ctx = BlockContext(prefix=prefix, cohort=cohort, cfg=cfg, plat=plat, params=prm, session_dir=sess["dir"],
+                       replica_runs=replica / replica_sub, progress=progress)
+    res = {"stopped": "not started"}
+    try:
+        res = body(ctx, prm, con)
+    finally:
+        close_session(sess["dir"], plat, C["ledger"], [Path(r["package"]) for r in ctx.runs])
+    print(_json({"session": sess["session"], **res}))
+    return 0 if not res.get("stopped") else 2
+
+
+def cmd_cohort_run(a) -> int:
+    from .orchestrator import require_freeze
+    from .orchestrator.cohort import run_confirmatory
+    require_freeze()                                   # Section 16: no RUN- ID without a matching, registered freeze
+    C = _cohort_paths(a)
+    rows = _read_schedule(REPO / "protocol" / "randomization_schedule.csv")
+    return _session_run(a, "RUN", "confirmatory", C["runs"], C["sessions"], C["progress"], "runs",
+                        "G6 confirmatory", lambda ctx, prm, con: run_confirmatory(rows, ctx, con, prm, C["control"],
+                                                                                  max_blocks=a.max_blocks))
+
+
+def cmd_cohort_score(a) -> int:
+    from .orchestrator.cohort import score_cohort
+    C = _cohort_paths(a)
+    rows = _read_schedule(REPO / "protocol" / "randomization_schedule.csv")
+    rec = score_cohort(C["progress"], rows, C["scoring"], contract_mod.load_yaml(contract_mod.CONTRACT_PATH),
+                       contract_mod.load_yaml(contract_mod.PARAMETERS_PATH), C["analysis"], C["lock"])
+    print(_json({k: v for k, v in rec.items() if k != "scores_sha256"}))
+    return 0
+
+
+def cmd_calibration_plan(a) -> int:
+    from .orchestrator.cohort import calibration_schedule
+    C = _cohort_paths(a)
+    if not C["lock"].exists():
+        print("refusing: the calibration series runs after the confirmatory scores are locked (Section 13)")
+        return 2
+    if C["cal_schedule"].exists():
+        print(f"refusing: {C['cal_schedule']} exists (written once)")
+        return 2
+    prm = contract_mod.load_yaml(contract_mod.PARAMETERS_PATH)
+    rows = calibration_schedule(int(prm["design"]["master_seed"]))
+    digest = write_schedule(rows, C["cal_schedule"], int(prm["design"]["master_seed"]) + 13)
+    print(_json({"written": str(C["cal_schedule"]), "sha256": digest, "order": [r["load"] for r in rows]}))
+    return 0
+
+
+def cmd_calibration_run(a) -> int:
+    from .orchestrator import require_freeze
+    from .orchestrator.block import run_cohort
+    require_freeze()
+    C = _cohort_paths(a)
+    if not C["lock"].exists():
+        print("refusing: confirmatory scores are not locked (Section 13)")
+        return 2
+    rows = _read_schedule(C["cal_schedule"])
+    return _session_run(a, "CAL", "calibration", C["cal_runs"], C["cal_sessions"], C["cal_progress"],
+                        "calibration/runs", "calibration series", lambda ctx, prm, con: run_cohort(rows, ctx))
+
+
+def cmd_calibration_score(a) -> int:
+    from .reconstruct.pipeline import contract_opts, score_package
+    C = _cohort_paths(a)
+    con = contract_mod.load_yaml(contract_mod.CONTRACT_PATH)
+    prm = contract_mod.load_yaml(contract_mod.PARAMETERS_PATH)
+    opts = contract_opts(con)
+    n = 0
+    for rec in (json.loads(l) for l in open(C["cal_progress"])):
+        if rec.get("event") != "RUN" or rec["disposition"] != "SCORED" or (C["cal_scoring"] / rec["run_id"]).exists():
+            continue
+        score_package(Path(rec["package"]), C["cal_scoring"], con, [opts], opts, epsilon_s=prm["timing"]["epsilon_s"],
+                      grace_s=prm["timing"]["grace_s"], f5_tolerance_s=con["facts"]["F5"]["tolerance_s"])
+        n += 1
+    print(_json({"scored_now": n}))
+    return 0
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="frx", description="FRX protocol tools (Blueprint v3.0)")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -736,6 +863,37 @@ def main(argv=None) -> int:
 
     s = sub.add_parser("freeze-verify", help="check the working tree against FREEZE.json and registration.json")
     s.set_defaults(fn=cmd_freeze_verify)
+
+    s = sub.add_parser("amend-begin", help="start a protocol amendment: move the registered freeze to freeze_history")
+    s.set_defaults(fn=cmd_amend_begin)
+
+    def _clusterargs(sp):
+        sp.add_argument("--stores", required=True)
+        sp.add_argument("--harness-kubeconfig", required=True)
+        sp.add_argument("--replica", required=True, help="mounted off-host replica root (Section 15.3)")
+        sp.add_argument("--audit-reference", help="receiver file of the audit webhook reference observer")
+        _ev(sp)
+
+    s = sub.add_parser("cohort-run", help="G6: next confirmatory blocks in one session (use scripts/g6_session.sh)")
+    _clusterargs(s)
+    s.add_argument("--max-blocks", type=int)
+    s.set_defaults(fn=cmd_cohort_run)
+
+    s = sub.add_parser("cohort-score", help="after every block has closed: unseal, score, lock, export analysis input")
+    _ev(s)
+    s.set_defaults(fn=cmd_cohort_score)
+
+    s = sub.add_parser("calibration-plan", help="seeded 16-run calibration schedule (after scores are locked)")
+    _ev(s)
+    s.set_defaults(fn=cmd_calibration_plan)
+
+    s = sub.add_parser("calibration-run", help="run the calibration series (use scripts/g6_session.sh calibration)")
+    _clusterargs(s)
+    s.set_defaults(fn=cmd_calibration_run)
+
+    s = sub.add_parser("calibration-score", help="blinded reconstruction and scoring of the calibration series")
+    _ev(s)
+    s.set_defaults(fn=cmd_calibration_score)
 
     a = p.parse_args(argv)
     return a.fn(a)

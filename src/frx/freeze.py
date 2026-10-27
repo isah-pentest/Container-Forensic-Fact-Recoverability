@@ -41,11 +41,68 @@ def code_digest(repo: Path = REPO_ROOT) -> dict:
     return {"files": len(files), "sha256": hashlib.sha256(joined.encode()).hexdigest()}
 
 
+HISTORY_DIR = "protocol/freeze_history"
+
+
+def protocol_file_list(repo: Path = REPO_ROOT) -> list[str]:
+    """Base protocol files plus amendment notes and superseded freeze/registration records."""
+    extra = sorted(str(p.relative_to(repo)) for p in Path(repo).glob("protocol/AMENDMENT_*.md"))
+    extra += sorted(str(p.relative_to(repo)) for p in (Path(repo) / HISTORY_DIR).glob("*.json"))
+    return [*PROTOCOL_FILES, *extra]
+
+
 def snapshot(repo: Path = REPO_ROOT) -> dict:
-    missing = [f for f in PROTOCOL_FILES if not (repo / f).exists()]
+    files = protocol_file_list(repo)
+    missing = [f for f in files if not (repo / f).exists()]
     if missing:
         raise FileNotFoundError(f"missing for freeze: {missing}")
-    return {"protocol_files": {f: _sha(repo / f) for f in PROTOCOL_FILES}, "code": code_digest(repo)}
+    return {"protocol_files": {f: _sha(repo / f) for f in files}, "code": code_digest(repo)}
+
+
+def _protocol_version(repo: Path) -> str:
+    import yaml
+    return str(yaml.safe_load((Path(repo) / "protocol" / "parameters.yaml").read_text())["protocol_version"])
+
+
+def amend_begin(repo: Path = REPO_ROOT) -> dict:
+    """Start an amendment: move the registered freeze and its registration into freeze_history.
+
+    Requires the new version in parameters.yaml and protocol/AMENDMENT_v<new>.md; the next
+    write_freeze() then records what it supersedes. Commit the move before freezing.
+    """
+    repo = Path(repo)
+    fp, reg = _fp(repo), repo / "protocol" / "registration.json"
+    if not fp.exists() or not reg.exists():
+        raise FileNotFoundError("an amendment starts from a frozen and registered version")
+    old = json.loads(fp.read_text())
+    oldv, newv = old["protocol_version"], _protocol_version(repo)
+    if newv == oldv:
+        raise ValueError(f"set the new protocol_version in parameters.yaml (still {oldv})")
+    note = repo / "protocol" / f"AMENDMENT_v{newv}.md"
+    if not note.exists():
+        raise FileNotFoundError(f"write {note.relative_to(repo)} first (reason and changes)")
+    hist = repo / HISTORY_DIR
+    hist.mkdir(parents=True, exist_ok=True)
+    dst_f, dst_r = hist / f"FREEZE_v{oldv}.json", hist / f"registration_v{oldv}.json"
+    if dst_f.exists() or dst_r.exists():
+        raise FileExistsError(f"history for v{oldv} exists")
+    fp.rename(dst_f)
+    reg.rename(dst_r)
+    return {"superseded": oldv, "new_version": newv, "moved": [str(dst_f.relative_to(repo)), str(dst_r.relative_to(repo))]}
+
+
+def _supersedes(repo: Path, version: str) -> dict | None:
+    hist = Path(repo) / HISTORY_DIR
+    freezes = sorted(hist.glob("FREEZE_v*.json")) if hist.exists() else []
+    if not freezes:
+        return None
+    latest = max(freezes, key=lambda p: [int(x) for x in p.stem.split("_v")[1].split(".")])
+    oldv = latest.stem.split("_v")[1]
+    reg = hist / f"registration_v{oldv}.json"
+    regd = json.loads(reg.read_text()) if reg.exists() else {}
+    return {"version": oldv, "freeze_sha256": _sha(latest), "registration_url": regd.get("url"),
+            "registered_at": regd.get("registered_at"),
+            "amendment_note": f"protocol/AMENDMENT_v{version}.md"}
 
 
 def _fp(repo: Path) -> Path:
@@ -77,8 +134,13 @@ def write_freeze(repo: Path = REPO_ROOT, check_readiness: bool = True, run_tests
         raise RuntimeError(f"refusing to freeze: test suite failed ({tests['summary']})")
     head = subprocess.run(["git", "-c", "safe.directory=*", "-C", str(repo), "rev-parse", "HEAD"],
                           capture_output=True, text=True).stdout.strip()
-    rec = {"protocol_version": "3.0", "frozen_at": datetime.now(timezone.utc).isoformat(),
-           "base_commit": head, "tests": tests["summary"], **snapshot(repo)}
+    version = _protocol_version(repo) if (Path(repo) / "protocol" / "parameters.yaml").exists() else "3.0"
+    sup = _supersedes(repo, version)
+    if sup and not (Path(repo) / sup["amendment_note"]).exists():
+        raise FileNotFoundError(f"amendment note {sup['amendment_note']} is missing")
+    rec = {"protocol_version": version, "frozen_at": datetime.now(timezone.utc).isoformat(),
+           "base_commit": head, "tests": tests["summary"], **({"supersedes": sup} if sup else {}),
+           **snapshot(repo)}
     _fp(repo).write_text(json.dumps(rec, indent=2) + "\n")
     return rec
 
@@ -88,7 +150,8 @@ def check_freeze(repo: Path = REPO_ROOT) -> dict:
     if not _fp(repo).exists():
         return {"ok": False, "problems": ["protocol/FREEZE.json does not exist"]}
     rec = json.loads(_fp(repo).read_text())
-    now = snapshot(repo)
+    now = {"protocol_files": {f: (_sha(Path(repo) / f) if (Path(repo) / f).exists() else None)
+                              for f in rec["protocol_files"]}, "code": code_digest(repo)}
     problems = [f"{f} changed" for f, h in rec["protocol_files"].items() if now["protocol_files"].get(f) != h]
     if now["code"]["sha256"] != rec["code"]["sha256"]:
         problems.append("tracked code/cluster/scripts/tests/reporting changed since freeze")

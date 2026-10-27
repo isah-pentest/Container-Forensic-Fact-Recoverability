@@ -1,7 +1,7 @@
 # FRX fixed parameters — Blueprint v3.0, Sections 3, 6, 8, 9, 12, 14.
 # "locked" values may change only through a new protocol version.
 # "<Gx>" values are set at that gate by the rule cited and committed before freeze (G5).
-protocol_version: "3.0"
+protocol_version: "3.0.1"          # v3.0.1 engineering amendment (protocol/AMENDMENT_v3.0.1.md)
 
 timing:                      # locked
   delay_s: 60                # delta
