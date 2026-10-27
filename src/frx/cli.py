@@ -148,6 +148,26 @@ def cmd_smoke(a) -> int:
     return 0 if not rep.get("error") else 2
 
 
+def cmd_load_image(a) -> int:
+    from .load import resolve_image_digest
+    print(resolve_image_digest(a.ref))
+    return 0
+
+
+def cmd_capacity(a) -> int:
+    from .capacity import run
+    rep = run(REPO, Path(a.stores), Path(a.out_root), a.minutes, a.image, a.replicas,
+              a.exec_per_s, a.api_per_s, warmup_s=a.warmup, snapshot_every_s=a.snapshot_every,
+              label=a.label, keep_load=a.keep_load)
+    brief = {"out_dir": rep["out_dir"], "pass": rep["pass"],
+             "criteria": {k: v["pass"] for k, v in rep["criteria"].items()},
+             "store_growth_bytes_per_s": {k: round(v["bytes_per_s"]) for k, v in rep["store_growth"].items()},
+             "peak_mem_used_fraction": rep["resources"].get("peak_mem_used_fraction"),
+             "max_load1": rep["resources"].get("max_load1")}
+    print(_json(brief))
+    return 0 if rep["pass"] else 2
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="frx", description="FRX protocol tools (Blueprint v3.0)")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -221,6 +241,24 @@ def main(argv=None) -> int:
     s.add_argument("--exec-binary", default="/usr/bin/echo")
     s.add_argument("--settle", type=float, default=5.0)
     s.set_defaults(fn=cmd_smoke)
+
+    s = sub.add_parser("load-image", help="pull an image tag and print its digest reference")
+    s.add_argument("ref")
+    s.set_defaults(fn=cmd_load_image)
+
+    s = sub.add_parser("capacity", help="Section 14.2 capacity run (use scripts/g1_capacity_run.sh)")
+    s.add_argument("--stores", required=True)
+    s.add_argument("--out-root", required=True)
+    s.add_argument("--minutes", type=float, default=20)
+    s.add_argument("--image", required=True, help="load image pinned by digest")
+    s.add_argument("--replicas", type=int, default=20)
+    s.add_argument("--exec-per-s", type=float, default=10, help="per replica")
+    s.add_argument("--api-per-s", type=float, default=10, help="per replica")
+    s.add_argument("--warmup", type=int, default=60)
+    s.add_argument("--snapshot-every", type=int, default=300)
+    s.add_argument("--label", default="G1-provisional-ceiling")
+    s.add_argument("--keep-load", action="store_true")
+    s.set_defaults(fn=cmd_capacity)
 
     a = p.parse_args(argv)
     return a.fn(a)

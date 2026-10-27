@@ -36,6 +36,24 @@ fs.inotify.max_user_instances=512
 SYSCTL
 sudo sysctl --system >/dev/null
 
+echo "== clock: on Hyper-V, synchronise to the host clock (Microsoft guidance for Linux VMs)"
+if [ -e /dev/ptp_hyperv ] && command -v chronyc >/dev/null; then
+  echo 'refclock PHC /dev/ptp_hyperv poll 3 dpoll -2 offset 0 stratum 2' | sudo tee /etc/chrony/conf.d/hyperv-ptp.conf >/dev/null
+  sudo systemctl restart chrony
+  sleep 20
+  chronyc tracking | grep -E "Reference ID|Leap status" || true
+else
+  echo "no /dev/ptp_hyperv or chrony: keep the distribution's time service and record its status"
+fi
+
+echo "== swap off (swapping during runs distorts timing; memory exhaustion must surface as OOM)"
+sudo swapoff -a
+sudo sed -i.bak '/swap/ s/^\([^#]\)/#\1/' /etc/fstab
+[ -f /swap.img ] && sudo rm -f /swap.img || true
+
+echo "== tmux for long sessions (survives a dropped SSH connection)"
+command -v tmux >/dev/null || sudo apt-get install -y tmux
+
 echo "== freeze the platform during the study: stop automatic package upgrades"
 # Re-enable after the study with: sudo systemctl enable --now apt-daily.timer apt-daily-upgrade.timer unattended-upgrades
 sudo systemctl disable --now apt-daily.timer apt-daily-upgrade.timer unattended-upgrades 2>/dev/null || true
