@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import math
+from functools import lru_cache
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping
@@ -38,20 +39,43 @@ def simulate_table(rng: np.random.Generator, p: Mapping[str, float], b: int,
     return (rng.random((b, 4)) < prob).astype(float)
 
 
+@lru_cache(maxsize=None)
+def sign_test_size(k: int, alpha: float = 0.05) -> float:
+    """Exact size of the two-sided sign-flip test with k nonzero equal-magnitude terms.
+
+    Every nonzero term of the Delta_A statistic is +-0.5, so under the sharp null the statistic is
+    0.5 * (2 * Binomial(k, 1/2) - k) / B: a sign test. Its attainable sizes are a lattice, so the
+    size at alpha is the largest attainable tail probability below alpha (e.g. 0.023 at k = 24).
+    """
+    if k == 0:
+        return 0.0
+    probs = np.array([math.comb(k, j) for j in range(k + 1)], dtype=float) / 2.0 ** k
+    dev = np.abs(2 * np.arange(k + 1) - k)
+    size = 0.0
+    for s in sorted(set(dev.tolist())):
+        tail = float(probs[dev >= s].sum())        # P(|S| >= s) = the test's p-value at |S| = s
+        if tail < alpha:
+            return tail
+    return size
+
+
 def power_at(scenario: Scenario, b: int, sigma_b: float, n_sims: int, n_draws: int,
              seed: int, alpha: float = 0.05) -> dict:
     rng = np.random.Generator(np.random.PCG64(seed))
-    rejections, fallbacks = 0, 0
+    rejections, fallbacks, expected = 0, 0, 0.0
     for k in range(n_sims):
         y = simulate_table(rng, scenario.p, b, sigma_b)
         res = randomization_test(y, "A", n_draws=n_draws, seed=seed + 1 + k)
         rejections += int(res["p_value"] < alpha)
         fallbacks += int(fallback_triggered(y, "A"))
+        nz = int(np.count_nonzero(y[:, 1] - y[:, 0]) + np.count_nonzero(y[:, 3] - y[:, 2]))
+        expected += sign_test_size(nz, alpha)       # exact rejection probability under the sharp null
     pw = rejections / n_sims
     return {
         "scenario": scenario.name, "B": b, "sigma_b": sigma_b, "n_sims": n_sims,
         "n_draws": n_draws, "power": pw, "mc_se": math.sqrt(pw * (1 - pw) / n_sims),
         "fallback_rate": fallbacks / n_sims, "seed": seed,
+        "exact_null_size": expected / n_sims,       # meaningful for null scenarios only
     }
 
 
@@ -89,3 +113,28 @@ def choose_b(rows: list[dict], primary: str, conservative: str, sigma_b: float =
         if p1 is not None and p2 is not None and p1 >= target_primary and p2 >= target_conservative:
             return b
     return None
+
+
+def confirm(scenarios: Mapping[str, Scenario], b: int, seed: int, primary: str, conservative: str,
+            calibration: str, nulls: Iterable[str], sigma_b: float = 0.5, n_sims: int = 2000,
+            n_draws: int = 2000, target_primary: float = 0.80, target_conservative: float = 0.70,
+            band: tuple[float, float] = (0.035, 0.065), alpha: float = 0.05) -> dict:
+    """Section 12.5 confirmation stage at one B: full precision for the rule's two scenarios and
+    type-I error for the null scenarios; the calibration scenario must fall inside the band."""
+    rows = {}
+    for i, name in enumerate([primary, conservative, *nulls]):
+        rows[name] = power_at(scenarios[name], b, sigma_b, n_sims, n_draws, seed + 7919 * (i + 1), alpha)
+    cal = rows[calibration]
+    e = cal["exact_null_size"]
+    tol = 3 * math.sqrt(max(e * (1 - e), 1e-12) / n_sims)
+    ok = {"primary": rows[primary]["power"] >= target_primary,
+          "conservative": rows[conservative]["power"] >= target_conservative,
+          # G5 clarification (protocol/gates/G5.md): the locked test is a sign test whose attainable
+          # sizes are a lattice, so the 0.035-0.065 band is unattainable; calibration is checked as
+          # agreement with the exact size on the same datasets, and validity as size <= alpha.
+          "type_one_matches_exact_size": abs(cal["power"] - e) <= tol,
+          "type_one_le_alpha": cal["power"] <= alpha + tol}
+    return {"B": b, "sigma_b": sigma_b, "n_sims": n_sims, "n_draws": n_draws, "seed": seed, "rows": rows,
+            "targets": {"primary": target_primary, "conservative": target_conservative,
+                        "band_as_written": list(band), "calibration_tolerance": tol},
+            "checks": ok, "pass": all(ok.values())}

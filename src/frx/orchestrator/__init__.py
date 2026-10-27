@@ -17,5 +17,8 @@ STATES = (
 
 
 def require_freeze() -> None:
-    """Raise unless protocol/FREEZE.json exists and matches the working tree. Implemented at G5."""
-    raise NotImplementedError("implemented with the freeze procedure at G5")
+    """Raise unless protocol/FREEZE.json exists and matches the working tree (Section 16)."""
+    from ..freeze import check_ready_for_run_ids
+    r = check_ready_for_run_ids()
+    if not r["ok"]:
+        raise RuntimeError(f"refusing to issue RUN- IDs: {r['problems']}")

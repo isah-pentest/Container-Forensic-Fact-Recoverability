@@ -444,6 +444,85 @@ def cmd_pilot_report(a) -> int:
     return 0 if rep["pass"] else 2
 
 
+# ---------------------------------------------------------------------- G5 freeze
+PARAMS_FILE = REPO / "protocol" / "parameters.yaml"
+
+
+def _set_param_placeholder(key: str, value) -> None:
+    """Replace one '<G5>' placeholder line in parameters.yaml (text edit keeps comments)."""
+    text = PARAMS_FILE.read_text()
+    old = f'  {key}: "<G5>"'
+    if text.count(old) != 1:
+        raise ValueError(f"parameters.yaml has no open placeholder for {key}")
+    PARAMS_FILE.write_text(text.replace(old, f"  {key}: {value}"))
+
+
+def cmd_power_confirm(a) -> int:
+    from .power import confirm
+    spec = json.loads(Path(a.scenarios).read_text())
+    sc = {s["name"]: Scenario(s["name"], s["p"]) for s in spec["scenarios"]}
+    res = confirm(sc, a.b, a.seed, a.primary, a.conservative, a.calibration, a.nulls)
+    Path(a.out).write_text(_json(res) + "\n")
+    print(_json({"written": a.out, "B": a.b, "pass": res["pass"], "checks": res["checks"],
+                 "power": {k: round(v["power"], 4) for k, v in res["rows"].items()}}))
+    return 0 if res["pass"] else 2
+
+
+def cmd_g5_set_blocks(a) -> int:
+    conf = json.loads(Path(a.confirm).read_text())
+    if not conf["pass"] or conf["B"] != a.n_blocks:
+        print(f"refusing: confirmation at B={conf['B']} pass={conf['pass']} does not support n_blocks={a.n_blocks}")
+        return 2
+    if a.n_blocks > 24:
+        print("refusing: B_max is 24 (Section 12.5)")
+        return 2
+    _set_param_placeholder("n_blocks", a.n_blocks)
+    print(_json({"n_blocks": a.n_blocks}))
+    return 0
+
+
+def cmd_seed_record(a) -> int:
+    import hashlib
+    out = REPO / "protocol" / "master_seed.json"
+    if out.exists():
+        print("refusing: protocol/master_seed.json exists (written once)")
+        return 2
+    raw = Path(a.pulse_json).read_bytes()
+    pulse = json.loads(raw)["pulse"]
+    ov = pulse["outputValue"]
+    from .freeze import seed_from_output_value
+    seed = seed_from_output_value(ov)
+    rec = {"rule": "seed = int(first 16 hex digits of NIST Beacon 2.0 pulse outputValue)",
+           "source": "NIST Randomness Beacon 2.0", "pulse_uri": pulse.get("uri"),
+           "pulse_timestamp": pulse.get("timeStamp"), "output_value": ov, "master_seed": seed,
+           "pulse_json_sha256": hashlib.sha256(raw).hexdigest(), "pulse": pulse}
+    out.write_text(json.dumps(rec, indent=2) + "\n")
+    _set_param_placeholder("master_seed", seed)
+    print(_json({k: rec[k] for k in ("pulse_uri", "pulse_timestamp", "master_seed")}))
+    return 0
+
+
+def cmd_freeze(a) -> int:
+    from .freeze import write_freeze
+    rec = write_freeze()
+    print(_json({"written": "protocol/FREEZE.json", "base_commit": rec["base_commit"], "code": rec["code"]}))
+    return 0
+
+
+def cmd_register(a) -> int:
+    from .freeze import write_registration
+    rec = write_registration(REPO, a.venue, a.url, a.registered_at)
+    print(_json(rec))
+    return 0
+
+
+def cmd_freeze_verify(a) -> int:
+    from .freeze import check_ready_for_run_ids
+    r = check_ready_for_run_ids()
+    print(_json(r))
+    return 0 if r["ok"] else 2
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="frx", description="FRX protocol tools (Blueprint v3.0)")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -624,6 +703,38 @@ def main(argv=None) -> int:
     s = sub.add_parser("pilot-report", help="G4 criteria and pilot estimates")
     _ev(s)
     s.set_defaults(fn=cmd_pilot_report)
+
+    s = sub.add_parser("power-confirm", help="Section 12.5 confirmation stage at one B (G5)")
+    s.add_argument("--scenarios", default=str(REPO / "protocol" / "power" / "scenarios.json"))
+    s.add_argument("--b", type=int, required=True)
+    s.add_argument("--seed", type=int, required=True)
+    s.add_argument("--primary", default="pilot_informed")
+    s.add_argument("--conservative", default="conservative")
+    s.add_argument("--calibration", default="null_calibration")
+    s.add_argument("--nulls", nargs="+", default=["null_calibration", "null"])
+    s.add_argument("--out", default=str(REPO / "protocol" / "power" / "confirm.json"))
+    s.set_defaults(fn=cmd_power_confirm)
+
+    s = sub.add_parser("g5-set-blocks", help="write the confirmed B into parameters.yaml (G5)")
+    s.add_argument("--n-blocks", type=int, required=True)
+    s.add_argument("--confirm", default=str(REPO / "protocol" / "power" / "confirm.json"))
+    s.set_defaults(fn=cmd_g5_set_blocks)
+
+    s = sub.add_parser("seed-record", help="master seed from a NIST Beacon 2.0 pulse (G5; written once)")
+    s.add_argument("--pulse-json", required=True)
+    s.set_defaults(fn=cmd_seed_record)
+
+    s = sub.add_parser("freeze", help="write protocol/FREEZE.json (G5; committed tree, no placeholders)")
+    s.set_defaults(fn=cmd_freeze)
+
+    s = sub.add_parser("register", help="record the registration of the frozen protocol (G5, before any RUN- ID)")
+    s.add_argument("--venue", required=True)
+    s.add_argument("--url", required=True)
+    s.add_argument("--registered-at", required=True, help="timestamp shown by the registry")
+    s.set_defaults(fn=cmd_register)
+
+    s = sub.add_parser("freeze-verify", help="check the working tree against FREEZE.json and registration.json")
+    s.set_defaults(fn=cmd_freeze_verify)
 
     a = p.parse_args(argv)
     return a.fn(a)

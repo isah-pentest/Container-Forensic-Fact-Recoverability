@@ -88,7 +88,7 @@ The repository **and** the evidence store must live on the WSL Linux filesystem 
 | G1 | Pre-flight; bring up cluster; smoke test; capacity run at provisional ceiling (20 min) | `scripts/g1_preflight.sh`, `scripts/g1_cluster_up.sh`, `frx smoke`, `frx fingerprint` | `g1-platform` |
 | G2 + G3 | Qualification series Q (33 `QUAL-` runs); fix contract details, store capacity, rates | `protocol/gates/G2G3_RUNBOOK.md`; `frx load-map`, `frx operating-points`, `frx qual-plan`, `scripts/g2_qual_part.sh`, `frx qual-score`, `frx qual-report` | `g3-qualified` |
 | G4 | 3 pilot blocks (`PILOT-`), replicated off-host | `protocol/gates/G4_RUNBOOK.md`; `scripts/mount_replica.sh`, `frx pilot-plan`, `scripts/g4_pilot.sh`, `frx pilot-score`, `frx pilot-report` | `g4-pilot` |
-| G5 | Power simulation; seed; schedule; FREEZE.json; registration | `frx power ...`, `frx schedule ...`, `frx freeze-check` must exit 0 | `protocol-v3.0-frozen` |
+| G5 | Power simulation; seed; schedule; FREEZE.json; registration | `protocol/gates/G5_RUNBOOK.md`; `frx power`, `frx power-confirm`, `frx g5-set-blocks`, `frx seed-record`, `frx schedule`, `frx freeze`, `frx register`, `frx freeze-verify` | `protocol-v3.0-frozen` |
 | G6 | Confirmatory blocks, then calibration series (`CAL-`) | orchestrator; gates after every run and block | — |
 | G7 | Clean-environment regeneration, ≥ 10% raw-to-fact audit | `./reproduce.sh <evidence>` ; `frx analyze` | `g7-analysis` |
 | G8 | Sanitized release | `release/` in the evidence store | `g8-release` |
