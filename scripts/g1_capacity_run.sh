@@ -6,7 +6,8 @@
 #   env: FRX_EVIDENCE (~/frx-evidence), FRX_STORES (~/frx-stores),
 #        FRX_LOAD_IMAGE (python:3.14-slim), FRX_LOAD_REPLICAS (20),
 #        FRX_LOAD_EXEC (10 per replica per s), FRX_LOAD_API (10 per replica per s),
-#        FRX_CAPACITY_LABEL (G1-provisional-ceiling)
+#        FRX_CAPACITY_LABEL (G1-provisional-ceiling), FRX_CAPACITY_OUT ($FRX_EVIDENCE/qualification/g1)
+#   FRX_LOAD_IMAGE may be a tag or an @sha256 digest (G3: use the digest pinned in parameters.yaml)
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 EVID="${FRX_EVIDENCE:-$HOME/frx-evidence}"
@@ -18,7 +19,7 @@ EXEC="${FRX_LOAD_EXEC:-10}"
 API="${FRX_LOAD_API:-10}"
 LABEL="${FRX_CAPACITY_LABEL:-G1-provisional-ceiling}"
 PY="$REPO/.venv/bin/python"
-OUT_ROOT="$EVID/qualification/g1"
+OUT_ROOT="${FRX_CAPACITY_OUT:-$EVID/qualification/g1}"
 
 [ "$(kubectl config current-context)" = "kind-frx" ] || { echo "kubectl context is not kind-frx"; exit 2; }
 [ -z "${TMUX:-}" ] && echo "WARNING: not inside tmux; a dropped SSH session would stop this run."

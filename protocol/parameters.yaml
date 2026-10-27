@@ -13,15 +13,16 @@ timing:                      # locked
   load_warmup_block_start_s: 60
   manipulation_window_s: 15
   termination_poll_interval_s: 0.5
-  readiness_timeout_s: "<G3>"        # 3 x max observed in Q-a/Q-b, rounded up
-  namespace_delete_timeout_s: "<G3>"
+  readiness_timeout_s: 2             # G3: 3 x max observed in Q-a/Q-b (0.518 s), rounded up
+  termination_timeout_s: 16          # G3: 3 x max delete -> 404 (5.06 s), rounded up
+  namespace_delete_timeout_s: 19     # G3: 3 x max (6.04 s), rounded up
 
 target_pod:                  # locked
   termination_grace_period_s: 1
   sidecars: none
   image_pull_policy: IfNotPresent
-  image_digest: "<G2>"
-  exec_binary: "<G2>"
+  image_digest: "docker.io/library/debian@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad"   # G2 (debian:trixie-slim)
+  exec_binary: /usr/bin/echo
   namespace_pattern: "frx-{short_uuid}"
   pod_pattern: "tgt-{short_uuid}"
   nonce_bits: 128
@@ -31,15 +32,23 @@ load:
   namespace: frx-load
   configmap: frx-load-rate
   manipulation_tolerance: 0.20       # locked: +/- 20 % of target, both sources
-  replicas: "<G3>"
-  rate_low_bytes_per_s: {audit: "<G3>", tetragon: "<G3>"}
-  rate_moderate_bytes_per_s: {audit: "<G3>", tetragon: "<G3>"}
-  per_replica_exec_per_s: {L: "<G3>", M: "<G3>"}
-  per_replica_api_per_s: {L: "<G3>", M: "<G3>"}
+  # G3: Section 4.3 rule on load_map.json fit; operating_points.json (sha256 in protocol/gates/G3.md)
+  image_digest: "docker.io/library/python@sha256:82abc9f53600280b0757126f83c5a7d47088592d2acb6b4c0b9e97f76865508c"
+  replicas: 18
+  rate_low_bytes_per_s: {audit: 42834.0, tetragon: 46233.5}          # worst-case H >= 3 at +20 %
+  rate_moderate_bytes_per_s: {audit: 231303.5, tetragon: 249661.0}   # P(loss of oldest primary fact) = 0.5
+  per_replica_exec_per_s: {L: 0.545, M: 2.946}
+  per_replica_api_per_s: {L: 1.621, M: 9.393}
+  calibration:                       # H for F1 ~ 2.0, 1.2, 0.8, 0.5 (Section 13)
+    CAL1: {target_bytes_per_s: {audit: 115651.8, tetragon: 124830.5}, exec_per_s: 1.473, api_per_s: 4.624}
+    CAL2: {target_bytes_per_s: {audit: 192752.9, tetragon: 208050.8}, exec_per_s: 2.455, api_per_s: 7.803}
+    CAL3: {target_bytes_per_s: {audit: 289129.4, tetragon: 312076.2}, exec_per_s: 3.682, api_per_s: 11.778}
+    CAL4: {target_bytes_per_s: {audit: 462607.1, tetragon: 499321.9}, exec_per_s: 5.892, api_per_s: 18.933}
 
 stores:                      # Section 4.3 rule; k >= 1 required
   audit: {max_size_mb: 10, max_backups: 1, max_age_days: 365, compress: false}   # set 2026-10-26, G3 decision 1
   tetragon: {max_size_mb: 10, max_backups: 1, rotation_interval: disabled}
+  reference_observer: {audit_webhook: true, tetragon_grpc: true}   # G3: drop-free in every Q run
   capacity_rationale: "M = 10 MiB: Tetragon Helm chart 1.7.1 default export file size, used for both sources. k reduced from the chart default 5 to 1 under Section 4.3 item 4: the largest k whose highest required rate (Q-c and calibration, H ~ 0.5: 341 API GET/s, 106 exec/s) lies inside the envelope measured in load_map.json (400 GET/s, 200 exec/s); k = 5, 3, 2 need 1257, 799, 570 GET/s. Decided from load-map metadata only, before any Q run."
 
 design:                      # locked

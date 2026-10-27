@@ -18,6 +18,26 @@ def _run(cmd: list[str], timeout: int = 60) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
 
+def _stat(p: Path):
+    try:
+        st = p.stat()
+        return (st.st_ino, st.st_size)
+    except FileNotFoundError:
+        return None
+
+
+def audit_growing(s0, s1) -> bool:
+    """Section 8.4 'audit file growing' from two (inode, size) samples 2 s apart.
+
+    A rotation in between (new inode under the active name) is growth: the old file filled up.
+    Counting it as a failure aborted runs exactly when the active file was new (offset o ~ 0),
+    i.e. at maximum headroom, which biases the kept runs toward loss (QUAL-0033, Q-c).
+    """
+    if s0 is None or s1 is None:
+        return False
+    return s1[0] != s0[0] or s1[1] > s0[1]
+
+
 class KindPlatform:
     def __init__(self, repo: Path, stores: Path, harness_kubeconfig: Path, target_image: str,
                  exec_binary: str, load_image: str, readiness_timeout_s: float,
@@ -65,17 +85,20 @@ class KindPlatform:
         ds = _run(["kubectl", "get", "ds", "tetragon", "-n", "kube-system", "-o",
                    "jsonpath={.status.numberReady}/{.status.desiredNumberScheduled}"]).stdout.strip()
         a = self.stores["audit"] / "audit.json"
-        size0 = a.stat().st_size if a.exists() else -1
+        s0 = _stat(a)
         time.sleep(2.0)
-        size1 = a.stat().st_size if a.exists() else -1
+        s1 = _stat(a)
+        growing = audit_growing(s0, s1)
         tet_ready = bool(ds) and ds.split("/")[0] == ds.split("/")[-1] and ds.split("/")[0] not in ("", "0")
         ref_ok = True
         ref_size = None
         if self.audit_reference_file is not None:
             ref_ok = self.audit_reference_file.exists()
             ref_size = self.audit_reference_file.stat().st_size if ref_ok else None
-        ok = tet_ready and size1 > size0 >= 0 and ref_ok
-        return {"ok": ok, "tetragon_ready": ds, "audit_size_change_2s": size1 - size0,
+        ok = tet_ready and growing and ref_ok
+        return {"ok": ok, "tetragon_ready": ds, "audit_growing": growing,
+                "audit_rotated_2s": bool(s0 and s1 and s0[0] != s1[0]),
+                "audit_size_change_2s": (s1[1] - s0[1]) if (s0 and s1) else None,
                 "audit_reference_present": ref_ok, "audit_reference_size": ref_size}
 
     def reference_observers(self, namespace: str, sealed_ref_dir: Path) -> list:

@@ -12,6 +12,7 @@ secondary_facts: [F4, F5, F6]
 scoring_states: ["CORRECT", "FALSE", "ABSTAIN", "NOT_ELIGIBLE"]   # quoted: bare FALSE is a YAML boolean
 union_rule: "CORRECT if any eligible CORRECT and none FALSE; CONFLICT if any FALSE; else NOT_RECOVERED"
 sources: [audit, tetragon]
+harness_identity: "system:serviceaccount:frx-system:frx-harness"   # G2: actor of F3 and F6
 
 facts:
   F1:
@@ -40,8 +41,8 @@ facts:
         objectRef.subresource: exec
         objectRef.namespace: "{ns}"
         objectRef.name: "{pod}"
-      verbs_accepted: "<G2>"
-      stages_accepted: "<G2>"
+      verbs_accepted: [get, create]          # G2: websocket exec is GET (12/12 in Q-a); SPDY clients POST
+      stages_accepted: [ResponseStarted, ResponseComplete]   # G2: first stage per auditID is ResponseStarted (12/12)
       command_source: requestURI.query.command
       dedupe_key: auditID
     tetragon:
@@ -49,8 +50,8 @@ facts:
       match:
         process.pod.namespace: "{ns}"
         process.pod.name: "{pod}"
-        process.binary: "<G2>"
-      fallback_attribution: "<G2>"     # none | container_id
+        process.binary: /usr/bin/echo        # G2: real coreutils binary, decoded from requestURI 12/12
+      fallback_attribution: none             # G2 rule 7.4.2: pod metadata in 12/12 Q-a runs
       arguments_field: process.arguments
 
   F3:
@@ -65,17 +66,20 @@ facts:
         objectRef.name: "{pod}"
         stage: ResponseComplete
       success_codes: [200, 202]
-      uid_required: "<G2>"
+      uid_required: true                     # G2 rule 22.2: UID present in 12/12 Q-a runs
+      actor_required: true                   # G2: record actor must be harness_identity; the kubelet
+                                             #   (system:node:<node>) also deletes the pod ~4.5 s later
 
   F4:
     question: "Did the main process of pod {pod}'s container exit?"
     eligible: [tetragon]
     secondary: true
+    tetragon: {event: process_exit, binary: /usr/bin/sleep, arguments: infinity}   # G2: target entrypoint
   F5:
     question: "Are create < exec < delete in timestamp order within tolerance?"
     eligible: [audit, tetragon]
     secondary: true
-    tolerance_s: "<G1>"
+    tolerance_s: 0.05                        # 3 x max Tetragon-audit exec residual in Q (14.3 ms, n = 29), rounded up
   F6:
     question: "Which identity performed the exec?"
     eligible: [audit]

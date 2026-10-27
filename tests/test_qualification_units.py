@@ -176,3 +176,12 @@ def test_load_map_fit_separates_knobs_with_factorial_design():
     f = fit_load_map(pts)
     assert abs(f["audit"]["bytes_per_unit"] - 1400) < 1e-6 and abs(f["audit"]["cross_bytes_per_unit"] - 30) < 1e-6
     assert abs(f["tetragon"]["bytes_per_unit"] - 4700) < 1e-6 and abs(f["tetragon"]["intercept_bytes_per_s"] - 200) < 1e-6
+
+
+def test_audit_growing_counts_rotation_as_growth():
+    from frx.orchestrator.platform import audit_growing
+    assert audit_growing((10, 1000), (10, 5000))            # grew
+    assert not audit_growing((10, 1000), (10, 1000))        # stalled
+    assert audit_growing((10, 10_400_000), (11, 150_000))   # rotated: size fell, new inode (QUAL-0033)
+    assert not audit_growing(None, (11, 5))                 # file missing at first sample
+    assert not audit_growing((10, 5), None)
