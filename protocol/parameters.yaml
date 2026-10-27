@@ -83,6 +83,7 @@ host:                        # Section 14
   peak_memory_max_fraction: 0.75
   preaction_memory_min_fraction: 0.30
   disk_free_min: "3 x package_size + 10 GB"
+  disk_free_min_bytes: 10281850354   # G4: 3 x largest pilot package (93,950,118 B) + 10 GB
   stop_after_consecutive_oom: 2
 
 stop_rules:                  # Section 10.4, locked
