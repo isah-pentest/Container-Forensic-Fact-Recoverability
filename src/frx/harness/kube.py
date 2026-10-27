@@ -82,6 +82,13 @@ class ApiClient:
         return Response(code, parsed, sent, received)
 
 
+def _pod_status(body) -> dict:
+    """status of a Pod body; {} for anything else (a 404/409 Status object has status: "Failure")."""
+    if isinstance(body, dict) and body.get("kind") == "Pod" and isinstance(body.get("status"), dict):
+        return body["status"]
+    return {}
+
+
 def _brief(body: dict | None) -> dict:
     if not isinstance(body, dict):
         return {}
@@ -163,7 +170,7 @@ class KubeHarness:
         while True:
             g = self._call("ready_wait", "GET", f"/api/v1/namespaces/{ident.namespace}/pods/{ident.pod_name}")
             polls += 1
-            conds = (((g.body or {}).get("status") or {}).get("conditions") or [])
+            conds = _pod_status(g.body).get("conditions") or []
             if g.code == 200 and any(c.get("type") == "Ready" and c.get("status") == "True" for c in conds):
                 break
             if time.monotonic() > deadline:
@@ -210,7 +217,8 @@ class KubeHarness:
             r = self.c.request("GET", f"/api/v1/namespaces/{ident.namespace}/pods/{ident.pod_name}")
             n += 1
             poll_journal({"n": n, "code": r.code, "sent": r.sent, "received": r.received,
-                          "phase": ((r.body or {}).get("status") or {}).get("phase")})
+                          "phase": _pod_status(r.body).get("phase"),
+                          "reason": (r.body or {}).get("reason") if isinstance(r.body, dict) else None})
             if r.code == 404:
                 return {"termination_confirmed": r.received, "polls": n}
             if time.monotonic() > deadline:
