@@ -33,3 +33,15 @@ def test_audit_kind_includes_stage(tmp_path):
     refk = _ref_keys(ref, [{"evidence": {"line": 1, "auditID": "A1"}}])
     acq = _keys_in_acquired(pkg, "audit")
     assert not [k for k in refk if k in acq] and ("A1", "audit:ResponseComplete") in acq
+
+
+def test_only_answers_that_score_correct_count():
+    from frx.analysis.mechanism import correct_answers
+    truth = {"pod": "p", "uid": "u", "executable": "/usr/bin/echo", "arguments": ["N"], "harness_identity": "h"}
+    opts = {"f3_actor_required": True, "f3_uid_required": True}
+    harness = {"pod_name": "p", "pod_uid": "u", "actor": "h", "actor_is_harness": True}
+    kubelet = {"pod_name": "p", "pod_uid": "u", "actor": "system:node:n", "actor_is_harness": False}
+    assert correct_answers("F3", "audit", [harness, kubelet], truth, opts) == [harness]
+    create = {"pod_name": "p", "pod_uid": "u"}
+    binding = {"pod_name": "p", "pod_uid": None}
+    assert correct_answers("F1", "audit", [create, binding], truth, opts) == [create]

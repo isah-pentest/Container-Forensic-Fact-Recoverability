@@ -23,7 +23,7 @@ from ..headroom import predicted_loss_probability
 from ..monitors import growth_from_rows
 from ..reconstruct import reconstruct
 from ..reconstruct.pipeline import contract_opts, run_window
-from ..reconstruct.score import score_identity
+from ..reconstruct.score import field_checks, score_identity
 from ..stats import wilson
 from .inputs import Evidence, journal, read_jsonl
 
@@ -224,6 +224,16 @@ def _ref_keys(ref_file: Path, answers: list[dict]) -> set:
     return out
 
 
+def correct_answers(fact: str, source: str, answers: list[dict], truth: dict, opts: dict) -> list[dict]:
+    """The answers that make a fact CORRECT under the frozen scoring rule: every field check true, after
+    the F3 actor filter (the kubelet's own delete of the pod is not the harness's delete record, and a
+    pods/binding create carries no UID). Only these records count when asking whether the record that
+    would have answered the question was acquired."""
+    if fact == "F3" and opts.get("f3_actor_required"):
+        answers = [a for a in answers if a.get("actor_is_harness")]
+    return [a for a in answers if all(v is True for v in field_checks(fact, source, a, truth, opts).values())]
+
+
 def _keys_in_acquired(pkg: Path, source: str) -> dict:
     """(key, kind) -> 'file:line' of every record in the acquired bytes of one source."""
     keys = {}
@@ -275,7 +285,8 @@ def loss_stages(ev: Evidence) -> dict:
                     if scored["facts"][fact]["states"][src] != "CORRECT":
                         rec["stage"] = "NOT_EMITTED"
                     else:
-                        refk = _ref_keys(pkg / "sealed" / "reference" / ref_files[src], ans["facts"][fact][src])
+                        good = correct_answers(fact, src, ans["facts"][fact][src], truth, contract_opts(ev.contract))
+                        refk = _ref_keys(pkg / "sealed" / "reference" / ref_files[src], good)
                         keys = {k for k, _ in refk}
                         acq = _keys_in_acquired(pkg, src)
                         same = sorted(acq[k] for k in refk if k in acq)
