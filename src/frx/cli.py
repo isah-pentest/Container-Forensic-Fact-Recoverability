@@ -168,6 +168,17 @@ def cmd_capacity(a) -> int:
     return 0 if rep["pass"] else 2
 
 
+def cmd_capacity_reevaluate(a) -> int:
+    from .capacity import reevaluate
+    rep = reevaluate(Path(a.run_dir))
+    print(_json({"written": rep["written"], "pass": rep["pass"],
+                 "criteria": {k: v["pass"] for k, v in rep["criteria"].items()},
+                 "completeness": rep["criteria"]["follower_complete_within_1pct"]["observed"],
+                 "store_growth": {k: {"bytes_per_s": round(v["bytes_per_s"]), "new_files": v["new_inodes"]}
+                                  for k, v in rep["store_growth"].items()}}))
+    return 0 if rep["pass"] else 2
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="frx", description="FRX protocol tools (Blueprint v3.0)")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -259,6 +270,10 @@ def main(argv=None) -> int:
     s.add_argument("--label", default="G1-provisional-ceiling")
     s.add_argument("--keep-load", action="store_true")
     s.set_defaults(fn=cmd_capacity)
+
+    s = sub.add_parser("capacity-reevaluate", help="recompute a capacity verdict from preserved files")
+    s.add_argument("run_dir")
+    s.set_defaults(fn=cmd_capacity_reevaluate)
 
     a = p.parse_args(argv)
     return a.fn(a)

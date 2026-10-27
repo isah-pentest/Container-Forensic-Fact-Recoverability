@@ -153,37 +153,52 @@ class ResourceMonitor(_Sampler):
 
 
 def bytes_written(growth_csv: Path) -> dict[str, dict]:
-    """Bytes written per store during the monitored window, from inode size histories.
+    """Bytes written per store during the monitored window, from 1 Hz file-size histories.
 
-    For an inode present at the first sample, growth = last size - first size; for an inode
-    that appears later, growth = last size seen (it started empty). Evicted files count up to
-    their last observed size. Also returns rotation count (new inodes) and duration.
+    A file is identified by its inode *life*, not its inode number: inode numbers are reused
+    after old backups are deleted. A new life starts when an inode's size shrinks (the reused
+    number now belongs to a new, smaller file). Renaming (active -> backup) keeps the life. Growth per life = last size - first size for lives present at the first sample,
+    otherwise last size (the file started empty). Also returns the number of new files.
     """
-    first_t = None
-    hist: dict[tuple[str, int], list[int]] = {}
-    present_at_start: set[tuple[str, int]] = set()
-    last_t = None
+    rows_by_t: dict[int, list] = {}
     with open(growth_csv) as fh:
         for row in csv.DictReader(fh):
-            t = int(row["mono_ns"])
-            if first_t is None:
-                first_t = t
+            rows_by_t.setdefault(int(row["mono_ns"]), []).append(row)
+    times = sorted(rows_by_t)
+    if not times:
+        return {}
+    lives: dict[tuple, list[int]] = {}         # (store, inode, life#) -> [first, last]
+    current: dict[tuple, int] = {}             # (store, inode) -> life#
+    last_seen_idx: dict[tuple, int] = {}
+    last_size: dict[tuple, int] = {}
+    at_start: set[tuple] = set()
+    for idx, t in enumerate(times):
+        for row in rows_by_t[t]:
             key = (row["store"], int(row["inode"]))
             size = int(row["size"])
-            if t == first_t:
-                present_at_start.add(key)
-            hist.setdefault(key, [size, size])
-            hist[key][1] = size
-            last_t = t
+            # A reused inode belongs to a new, smaller file than the evicted one it replaces, so a
+            # size drop marks a new life. Mere absence from a sample does not: a rename race between
+            # listing and stat can hide a live file for one sample.
+            new_life = key not in current or size < last_size.get(key, 0)
+            if new_life:
+                current[key] = current.get(key, -1) + 1
+                life = key + (current[key],)
+                lives[life] = [size, size]
+                if idx == 0:
+                    at_start.add(life)
+            life = key + (current[key],)
+            lives[life][1] = size
+            last_seen_idx[key] = idx
+            last_size[key] = size
     out: dict[str, dict] = {}
-    for (store, ino), (first, last) in hist.items():
-        d = out.setdefault(store, {"bytes": 0, "new_inodes": 0})
-        if (store, ino) in present_at_start:
+    for life, (first, last) in lives.items():
+        d = out.setdefault(life[0], {"bytes": 0, "new_inodes": 0})
+        if life in at_start:
             d["bytes"] += max(0, last - first)
         else:
             d["bytes"] += last
             d["new_inodes"] += 1
-    dur = (last_t - first_t) / 1e9 if first_t is not None and last_t is not None else 0.0
+    dur = (times[-1] - times[0]) / 1e9
     for d in out.values():
         d["duration_s"] = dur
         d["bytes_per_s"] = d["bytes"] / dur if dur > 0 else 0.0

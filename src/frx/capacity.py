@@ -176,3 +176,32 @@ def run(repo: Path, stores: Path, out_root: Path, minutes: float, image: str, re
     jl("END", passed=verdict["pass"])
     report["out_dir"] = str(out)
     return report
+
+
+def reevaluate(out_dir: Path) -> dict:
+    """Recompute the Section 14.2 verdict from a run's preserved files (no rerun).
+
+    Writes capacity_report_reeval_<UTC>.json next to the original report, which is never modified.
+    """
+    out_dir = Path(out_dir)
+    params = json.loads((out_dir / "params.json").read_text())
+    fsum = None
+    for line in open(out_dir / "journal.jsonl"):
+        e = json.loads(line)
+        if e.get("state") == "MONITORS_STOPPED":
+            fsum = e["followers"]
+    if fsum is None:
+        raise RuntimeError("journal has no MONITORS_STOPPED record")
+    resources = summarise_resources(out_dir / "resources_1hz.csv", params["vcpus"])
+    growth = bytes_written(out_dir / "growth_monitor_1hz.csv")
+    d_t = counter_deltas((out_dir / "metrics_tetragon_before.txt").read_text(), (out_dir / "metrics_tetragon_after.txt").read_text())
+    d_a = counter_deltas((out_dir / "metrics_apiserver_before.txt").read_text(), (out_dir / "metrics_apiserver_after.txt").read_text())
+    verdict = evaluate(resources, d_t, d_a, fsum, growth)
+    report = {"reevaluated_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+              "reason": "bytes_written() now tracks inode lives (inode numbers are reused after eviction)",
+              "params": params, "resources": resources, "store_growth": growth, "followers": fsum,
+              "counter_deltas": {"tetragon": d_t, "apiserver": d_a}, **verdict}
+    path = out_dir / f"capacity_report_reeval_{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}.json"
+    path.write_text(json.dumps(report, indent=2))
+    report["written"] = str(path)
+    return report

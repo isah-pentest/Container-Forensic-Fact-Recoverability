@@ -64,3 +64,41 @@ def test_load_render_pins_and_fills():
     text = render(REPO_ROOT, img, replicas=20, exec_per_s=10, api_per_s=10)
     assert "<G3>" not in text and img in text and "replicas: 20" in text
     assert "def api_loop" in text            # script embedded in its ConfigMap
+
+
+def test_bytes_written_survives_inode_reuse(tmp_path):
+    # inode 7 lives as file A (grows to 1000, rotated, later evicted), is absent one sample,
+    # then is reused for a brand-new active file that grows to 400: two lives, 1400 bytes total.
+    g = tmp_path / "g.csv"
+    seq = [
+        (1, [("audit.json", 7, 0)]),
+        (2, [("audit.json", 7, 600)]),
+        (3, [("audit-1.json", 7, 1000), ("audit.json", 8, 100)]),
+        (4, [("audit.json", 8, 500)]),                      # inode 7 evicted (absent)
+        (5, [("audit-2.json", 8, 900), ("audit.json", 7, 50)]),   # inode 7 reused
+        (6, [("audit-2.json", 8, 900), ("audit.json", 7, 400)]),
+    ]
+    with open(g, "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["mono_ns", "wall_ns", "store", "name", "inode", "size", "mtime_ns"])
+        for t, files in seq:
+            for name, ino, sz in files:
+                w.writerow([t * 1_000_000_000, 0, "audit", name, ino, sz, 0])
+    b = bytes_written(g)["audit"]
+    assert b["bytes"] == 1000 + 900 + 400 and b["new_inodes"] == 2
+
+
+def test_bytes_written_ignores_one_sample_rename_race(tmp_path):
+    # a live file missing from one sample (rename race) must not be double counted
+    g = tmp_path / "g.csv"
+    seq = [(1, [("audit.json", 7, 0)]), (2, [("audit.json", 7, 500)]), (3, []),
+           (4, [("audit-1.json", 7, 1000), ("audit.json", 8, 10)]), (5, [("audit.json", 8, 300)])]
+    with open(g, "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["mono_ns", "wall_ns", "store", "name", "inode", "size", "mtime_ns"])
+        for t, files in seq:
+            for name, ino, sz in files:
+                w.writerow([t * 1_000_000_000, 0, "audit", name, ino, sz, 0])
+            if not files:   # keep the timestamp present via another store's row
+                w.writerow([t * 1_000_000_000, 0, "tetragon", "tetragon.log", 99, 0, 0])
+    assert bytes_written(g)["audit"]["bytes"] == 1000 + 300
