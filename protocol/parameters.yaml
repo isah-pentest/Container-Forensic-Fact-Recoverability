@@ -16,7 +16,7 @@ timing:                      # locked
   readiness_timeout_s: 2             # G3: 3 x max observed in Q-a/Q-b (0.518 s), rounded up
   termination_timeout_s: 16          # G3: 3 x max delete -> 404 (5.06 s), rounded up
   namespace_delete_timeout_s: 19     # G3: 3 x max (6.04 s), rounded up
-  control_idle_s: "<G3>"             # NC action duration: median ACTION_REQUEST -> TERMINATION_CONFIRMED in Q-a/Q-b
+  control_idle_s: 4.1                # G3: median ACTION_REQUEST -> TERMINATION_CONFIRMED in Q-a/Q-b (n = 24; 3.59-5.62 s)
 
 target_pod:                  # locked
   termination_grace_period_s: 1
@@ -79,7 +79,7 @@ host:                        # Section 14
     G1: provisional_ceiling          # every replica at its maximum configured rates
     G3: highest_calibration_rate     # predicted H ~ 0.5 for F1; both runs must pass
   timestamp_source: python_time_ns_and_monotonic_ns   # never shell date (Section 14.1)
-  fingerprint_stable_hash: "<G3>"    # platform-only stable hash of the G3 cluster, collected as the pilot collects it
+  fingerprint_stable_hash: b64c25cd6d3d7e7ba98fc2077208422ff0b257568c438206b77fb9ba17c4a55f   # G3 cluster, platform-only, collected as root (2026-10-27); a change stops execution (10.4)
   peak_memory_max_fraction: 0.75
   preaction_memory_min_fraction: 0.30
   disk_free_min: "3 x package_size + 10 GB"
