@@ -42,6 +42,17 @@ def run_window(pkg: Path, epsilon_s: float, grace_s: float) -> dict:
             "epsilon_s": epsilon_s, "grace_s": grace_s}
 
 
+def contract_opts(contract: dict) -> dict:
+    """Primary scoring options fixed in the contract at G2 (no qualification candidates)."""
+    f3 = contract["facts"]["F3"]["audit"]
+    for k in ("uid_required", "actor_required"):
+        if not isinstance(f3.get(k), bool):
+            raise ValueError(f"contract F3.audit.{k} is not fixed ({f3.get(k)!r})")
+    if not contract.get("harness_identity"):
+        raise ValueError("contract.harness_identity is not set")
+    return {"f3_actor_required": f3["actor_required"], "f3_uid_required": f3["uid_required"]}
+
+
 def variant_opts(qual: dict) -> list[dict]:
     sv = qual.get("score_variants", {})
     keys = sorted(sv)

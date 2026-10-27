@@ -90,9 +90,27 @@ def collect(repo: Path) -> dict:
     fp["files"] = {rel: _sha(repo / rel) for rel in (
         "cluster/audit-policy.yaml", "protocol/contract.yaml", "protocol/parameters.yaml",
         "protocol/required_files.yaml", "protocol/schemas/run_status.schema.json")}
-    # stable part: everything except timestamps and live counters
-    stable = {k: fp[k] for k in ("host", "tools", "cluster", "files")}
-    stable = json.loads(json.dumps(stable, sort_keys=True))
-    stable["tools"].pop("git_commit", None)
-    fp["stable_hash"] = hashlib.sha256(json.dumps(stable, sort_keys=True).encode()).hexdigest()
+    fp["stable_hash"] = stable_hash(fp)
     return fp
+
+
+# Protocol files are hashed in every session_open.json and in FREEZE.json; they change by design at
+# G2-G5, so they are not part of the *platform* fingerprint (and parameters.yaml holds the reference).
+PLATFORM_FILES = ("cluster/audit-policy.yaml",)
+VOLATILE_NODE_INFO = ("bootID",)          # changes on every reboot; not a platform change
+
+
+def stable_hash(fp: dict) -> str:
+    """Hash of the platform: host, tools, cluster images and configuration, audit policy.
+
+    Excludes timestamps, the git commit, protocol files and the node boot ID, so a reboot or a
+    protocol edit does not look like a platform change (Section 10.4 stop rule).
+    """
+    stable = json.loads(json.dumps({k: fp.get(k) for k in ("host", "tools", "cluster", "files")}, sort_keys=True))
+    (stable.get("tools") or {}).pop("git_commit", None)
+    stable["files"] = {k: v for k, v in (stable.get("files") or {}).items() if k in PLATFORM_FILES}
+    ni = (stable.get("cluster") or {}).get("node_info")
+    if isinstance(ni, dict):
+        for k in VOLATILE_NODE_INFO:
+            ni.pop(k, None)
+    return hashlib.sha256(json.dumps(stable, sort_keys=True).encode()).hexdigest()

@@ -42,13 +42,14 @@ class KindPlatform:
     def __init__(self, repo: Path, stores: Path, harness_kubeconfig: Path, target_image: str,
                  exec_binary: str, load_image: str, readiness_timeout_s: float,
                  audit_reference_file: Path | None = None, tetragon_reference: bool = True,
-                 harness_identity: str = HARNESS_IDENTITY):
+                 harness_identity: str = HARNESS_IDENTITY, termination_timeout_s: float = 120.0):
         self.repo = Path(repo)
         self.stores = {"audit": Path(stores) / "audit", "tetragon": Path(stores) / "tetragon"}
         self.client = ApiClient(harness_kubeconfig)
         self.pod_template = yaml.safe_load((self.repo / "cluster" / "manifests" / "target-pod.yaml").read_text())
         self.target_image, self.exec_binary, self.load_image = target_image, exec_binary, load_image
         self.readiness_timeout_s = readiness_timeout_s
+        self.termination_timeout_s = termination_timeout_s
         self.audit_reference_file = Path(audit_reference_file) if audit_reference_file else None
         self.tetragon_reference = tetragon_reference
         self.harness_identity = harness_identity
@@ -70,10 +71,18 @@ class KindPlatform:
     # ---------------------------------------------------------------- harness and load
     def make_harness(self, journal) -> KubeHarness:
         return KubeHarness(self.client, self.pod_template, self.target_image, self.exec_binary, journal,
-                           self.readiness_timeout_s, identity=self.harness_identity)
+                           self.readiness_timeout_s, termination_timeout_s=self.termination_timeout_s,
+                           identity=self.harness_identity)
 
     def set_load(self, level: str, knob: dict) -> dict:
         return loadctl.set_rate(knob["exec_per_s"], knob["api_per_s"], level)
+
+    def deploy_load(self, replicas: int, knob: dict, level: str) -> dict:
+        """One load Deployment per block (Section 6.2); returns the rendered manifest and rollout."""
+        return loadctl.deploy(self.repo, self.load_image, replicas, knob["exec_per_s"], knob["api_per_s"], level=level)
+
+    def delete_load(self) -> dict:
+        return loadctl.delete(wait=True)
 
     # ---------------------------------------------------------------- health and diagnostics
     def metrics(self) -> dict:

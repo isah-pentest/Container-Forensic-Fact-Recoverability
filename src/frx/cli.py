@@ -339,12 +339,109 @@ def cmd_qual_report(a) -> int:
     path.write_text(_json(rep))
     brief = {"written": str(path), "by_part": rep["by_part"],
              "G2": {k: rep["G2"][k] for k in ("pass", "action_verified", "fact_correct_Q_a", "uid_present_Q_a",
-                                                "tetragon_route", "timeouts_rule", "false_attribution")},
+                                                "tetragon_route", "timeouts_rule", "action_duration_s",
+                                                "false_attribution")},
              "G3": {k: rep["G3"].get(k) for k in ("pass", "Q_b_compliant", "Q_c_direction_ok", "Q_c_within_band",
                                                     "reference_drop_free")},
              "leak_check": rep["leak_check"]["pass"]}
     print(_json(brief))
     return 0
+
+
+# ---------------------------------------------------------------------- G4 pilot
+def _pilot(a) -> dict:
+    e = Path(a.evidence).expanduser()
+    d = e / "qualification" / "pilot"
+    return {"root": e, "dir": d, "runs": d / "runs", "scoring": d / "scoring", "sessions": d / "sessions",
+            "schedule": d / "pilot_schedule.csv", "progress": d / "pilot_progress.jsonl",
+            "ledger": e / "ledger" / "attempt_ledger.csv"}
+
+
+def _read_schedule(path: Path) -> list[dict]:
+    lines = [l for l in open(path) if not l.startswith("#")]
+    return list(csv.DictReader(lines))
+
+
+def cmd_pilot_plan(a) -> int:
+    P = _pilot(a)
+    if P["schedule"].exists():
+        print(f"refusing: {P['schedule']} exists (written once)")
+        return 2
+    rows = make_schedule(a.seed, a.blocks, "PILOT-BLOCK")
+    digest = write_schedule(rows, P["schedule"], a.seed)
+    print(_json({"written": str(P["schedule"]), "sha256": digest, "blocks": a.blocks,
+                 "order": {b: [r["cell"] for r in rows if r["block"] == b] for b in sorted({r["block"] for r in rows})}}))
+    return 0
+
+
+def cmd_pilot_run(a) -> int:
+    from .fingerprint import collect
+    from .orchestrator.block import BlockContext, close_session, open_session, run_cohort, run_config
+    from .orchestrator.platform import KindPlatform
+    P = _pilot(a)
+    prm = contract_mod.load_yaml(contract_mod.PARAMETERS_PATH)
+    con = contract_mod.load_yaml(contract_mod.CONTRACT_PATH)
+    unresolved = [u for u in contract_mod.unresolved(con) + contract_mod.unresolved(prm) if "<G5>" not in u]
+    if unresolved:
+        print(_json({"refusing": "values not fixed before the pilot", "unresolved": unresolved}))
+        return 2
+    replica = Path(a.replica).expanduser()
+    if not replica.is_dir():
+        print(f"refusing: replica root {replica} is not a mounted directory")
+        return 2
+    rows = _read_schedule(P["schedule"])
+    t = prm["timing"]
+    plat = KindPlatform(REPO, Path(a.stores).expanduser(), Path(a.harness_kubeconfig).expanduser(),
+                        prm["target_pod"]["image_digest"], prm["target_pod"]["exec_binary"],
+                        prm["load"]["image_digest"], t["readiness_timeout_s"],
+                        audit_reference_file=Path(a.audit_reference).expanduser() if a.audit_reference else None,
+                        tetragon_reference=bool(prm["stores"]["reference_observer"]["tetragon_grpc"]),
+                        harness_identity=con["harness_identity"], termination_timeout_s=t["termination_timeout_s"])
+    plat.code_commit()                       # refuses a modified working tree
+    P["runs"].mkdir(parents=True, exist_ok=True)
+    cfg = run_config(prm, P["runs"], P["ledger"])
+    sess = open_session(P["sessions"], plat, P["ledger"], collect(REPO), prm["host"]["fingerprint_stable_hash"],
+                        [contract_mod.CONTRACT_PATH, contract_mod.PARAMETERS_PATH, P["schedule"]], "G4 pilot")
+    ctx = BlockContext(prefix="PILOT", cohort="pilot", cfg=cfg, plat=plat, params=prm, session_dir=sess["dir"],
+                       replica_runs=replica / "qualification" / "pilot" / "runs", progress=P["progress"])
+    res = {"stopped": "not started"}
+    try:
+        res = run_cohort(rows, ctx, max_blocks=a.max_blocks)
+    finally:
+        close_session(sess["dir"], plat, P["ledger"], [Path(r["package"]) for r in ctx.runs])
+    print(_json({"session": sess["session"], **res}))
+    return 0 if not res.get("stopped") else 2
+
+
+def cmd_pilot_score(a) -> int:
+    from .reconstruct.pipeline import contract_opts, score_package
+    P = _pilot(a)
+    con = contract_mod.load_yaml(contract_mod.CONTRACT_PATH)
+    prm = contract_mod.load_yaml(contract_mod.PARAMETERS_PATH)
+    opts = contract_opts(con)
+    n = 0
+    for rec in (json.loads(l) for l in open(P["progress"])):
+        if rec.get("event") != "RUN" or rec["disposition"] != "SCORED" or (P["scoring"] / rec["run_id"]).exists():
+            continue
+        r = score_package(Path(rec["package"]), P["scoring"], con, [opts], opts,
+                          epsilon_s=prm["timing"]["epsilon_s"], grace_s=prm["timing"]["grace_s"],
+                          f5_tolerance_s=con["facts"]["F5"]["tolerance_s"])
+        print(_json({k: r[k] for k in ("run_id", "Y", "false_attribution") if k in r}))
+        n += 1
+    print(_json({"scored_now": n}))
+    return 0
+
+
+def cmd_pilot_report(a) -> int:
+    import time
+    from .orchestrator.pilot_report import report
+    P = _pilot(a)
+    n_blocks = len({r["block"] for r in _read_schedule(P["schedule"])})
+    rep = report(P["progress"], P["runs"], P["scoring"], n_blocks)
+    path = P["dir"] / f"g4_report_{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}.json"
+    path.write_text(_json(rep))
+    print(_json({"written": str(path), **rep}))
+    return 0 if rep["pass"] else 2
 
 
 def main(argv=None) -> int:
@@ -504,6 +601,29 @@ def main(argv=None) -> int:
     s = sub.add_parser("qual-report", help="G2 and G3 criteria from the Q packages and scores")
     _ev(s)
     s.set_defaults(fn=cmd_qual_report)
+
+    s = sub.add_parser("pilot-plan", help="write the seeded pilot schedule once (G4)")
+    s.add_argument("--seed", type=int, required=True)
+    s.add_argument("--blocks", type=int, default=3)
+    _ev(s)
+    s.set_defaults(fn=cmd_pilot_plan)
+
+    s = sub.add_parser("pilot-run", help="run pilot blocks in one session (use scripts/g4_pilot.sh)")
+    s.add_argument("--stores", required=True)
+    s.add_argument("--harness-kubeconfig", required=True)
+    s.add_argument("--replica", required=True, help="mounted off-host replica root (Section 15.3)")
+    s.add_argument("--audit-reference", help="receiver file of the audit webhook reference observer")
+    s.add_argument("--max-blocks", type=int)
+    _ev(s)
+    s.set_defaults(fn=cmd_pilot_run)
+
+    s = sub.add_parser("pilot-score", help="blinded reconstruction and scoring of pilot packages (contract only)")
+    _ev(s)
+    s.set_defaults(fn=cmd_pilot_score)
+
+    s = sub.add_parser("pilot-report", help="G4 criteria and pilot estimates")
+    _ev(s)
+    s.set_defaults(fn=cmd_pilot_report)
 
     a = p.parse_args(argv)
     return a.fn(a)

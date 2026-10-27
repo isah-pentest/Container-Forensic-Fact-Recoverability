@@ -112,6 +112,9 @@ class FakeHarness:
 
     def exec_nonce_and_verify(self, ident):
         marker = f"FRX-{ident.nonce_hex}"
+        if self.c.fail_exec_n > 0:
+            self.c.fail_exec_n -= 1
+            raise StepFailed("UN-EXEC", "simulated exec failure", {"exit_code": 1, "stdout": "", "stderr": "boom"})
         if self.c.fail_exec:
             raise StepFailed("UN-EXEC", "simulated exec failure", {"exit_code": 1, "stdout": "", "stderr": "boom"})
         aid = str(uuid.uuid4())
@@ -177,6 +180,8 @@ class FakeCluster:
         self.tetragon = Producer(self.stores["tetragon"], "tetragon.log", max_bytes, backups, tet_rate, "tetragon")
         self.namespaces: set = set()
         self.fail_exec = False
+        self.fail_exec_n = 0          # fail the next n exec steps, then succeed
+        self.load_deployments = 0
         self.audit.start(); self.tetragon.start()
 
     def set_rates(self, audit=None, tetragon=None):
@@ -193,6 +198,10 @@ class FakeCluster:
     def image_digests(self): return {"target": "example/t@sha256:" + "1" * 64, "load": self.load_image}
     def make_harness(self, journal): return FakeHarness(self, journal)
     def set_load(self, level, knob): return {"level": level, **knob}
+    def deploy_load(self, replicas, knob, level):
+        self.load_deployments += 1
+        return {"manifest": f"# fake load deployment {replicas} x {knob}\n", "rollout": "ok"}
+    def delete_load(self): return {"rc": 0}
     def metrics(self): return {"tetragon_metrics": "tetragon_events_total 1\n", "apiserver_metrics": "apiserver_x 1\n"}
     def source_health(self): return {"ok": True}
     def reference_observers(self, ns, d): return [FakeObserver(d / "fake_reference.jsonl")]

@@ -8,9 +8,10 @@ def test_repo_contract_structure():
 
 
 def test_placeholders_block_freeze_until_resolved():
-    # After G2/G3 only the G5 values remain; freeze stays blocked until they are set.
+    # After G2/G3 no G1/G2 value remains; the G5 values block freeze until they are set.
     res = c.freeze_readiness()
-    assert sorted(res["unresolved"]) == ["design.master_seed = <G5>", "design.n_blocks = <G5>"]
+    assert not [u for u in res["unresolved"] if "<G1>" in u or "<G2>" in u]
+    assert {"design.master_seed = <G5>", "design.n_blocks = <G5>"} <= set(res["unresolved"])
 
 
 def test_unresolved_detects_placeholders():

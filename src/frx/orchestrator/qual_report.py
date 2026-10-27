@@ -107,6 +107,14 @@ def g2(rows: list[dict]) -> dict:
         c = [s for s in steps if s.get("step") == "namespace_check" and s.get("code") == 404]
         if d and c:
             nsdel.append((c[-1]["received"]["mono_ns"] - d[0]["sent"]["mono_ns"]) / 1e9)
+    act = sorted((j["TERMINATION_CONFIRMED"].get("response_mono_ns", j["TERMINATION_CONFIRMED"]["mono_ns"])
+                  - j["ACTION_REQUEST"]["mono_ns"]) / 1e9
+                 for j in (r["journal"] for r in qab if r["disposition"] == "SCORED")
+                 if "ACTION_REQUEST" in j and "TERMINATION_CONFIRMED" in j)
+    med = (act[(len(act) - 1) // 2] + act[len(act) // 2]) / 2 if act else None
+    out["action_duration_s"] = {"n": len(act), "median": med, "min": act[0] if act else None,
+                                "max": act[-1] if act else None,
+                                "control_idle_s_rule": round(med, 1) if med is not None else None}
     out["timeouts_rule"] = {
         "readiness_max_s": max(ready, default=None), "readiness_timeout_s": math.ceil(3 * max(ready)) if ready else None,
         "termination_max_s": max(term, default=None), "termination_timeout_s": math.ceil(3 * max(term)) if term else None,
