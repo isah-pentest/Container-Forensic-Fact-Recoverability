@@ -130,7 +130,7 @@ def run_all(evidence: Path, out_root: Path | None = None, draws: int = 100_000, 
     tl = _timeline(ev, e3_rows)
     figs = {"F1_architecture.svg": fg.f1_architecture(), "F3_cells.svg": fg.f3_cells(prim),
             "F4_effects.svg": fg.f4_deltas(prim), "F5_fact_source.svg": fg.f5_heatmap(res["secondary"], runs),
-            "F6_run_flow.svg": fg.f6_flow(res["validity"], prim), "F7_calibration.svg": fg.f7_calibration(res["e3"])}
+            "F6_run_flow.svg": fg.f6_flow(res["validity"], prim), "F7_calibration.svg": fg.f7_calibration(res["e3"], e3_rows)}
     if tl:
         figs["F2_timeline.svg"] = fg.f2_timeline(tl)
     files.update({f"figures/{k}": v for k, v in figs.items()})
