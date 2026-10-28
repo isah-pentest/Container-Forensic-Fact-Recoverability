@@ -135,6 +135,11 @@ def test_all_outputs_are_complete_and_reproducible(evidence, tmp_path):
                 "tables/T4_primary.csv", "figures/F3_cells.svg", "figures/F4_effects.svg", "figures/F7_calibration.svg",
                 "figures/F2_timeline.svg", "SHA256SUMS"):
         assert (out / rel).exists(), rel
+    for name in ("T1_design", "T2_contract", "T3_recovery", "T4_effects", "T5_sources", "T6_mechanism",
+                 "S1_sensitivity", "S2_operation", "S3_integrity"):
+        tex = (out / "tables" / "latex" / f"{name}.tex").read_text()
+        assert tex.isascii() and tex.count("\\begin{tabularx}") == 1, name
+        assert "\\caption" not in tex and "\\begin{table}" not in tex, name   # manuscript text stays out of the repo
     res = json.loads((out / "results.json").read_text())
     assert set(res["sensitivity"]) >= {"S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9"}
     assert res["validity"]["M14_false_attribution"]["x"] == 0

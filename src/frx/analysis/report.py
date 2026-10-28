@@ -14,6 +14,7 @@ from ..freeze import REPO_ROOT
 from . import confirmatory as cf
 from . import figures as fg
 from . import mechanism as mech
+from . import pubtables as pt
 from . import tables as tb
 from .inputs import Evidence, journal, read_jsonl
 
@@ -127,6 +128,7 @@ def run_all(evidence: Path, out_root: Path | None = None, draws: int = 100_000, 
              "runs.csv": _csv_text(runs), "e3_headroom.csv": _csv_text(e3_rows),
              "e4_loss_stages.csv": _csv_text(res["e4"]["items"]), "claims_register.csv": _csv_text(claims(res))}
     files.update(tb.render(tb.build(res)))
+    files.update(pt.build(res))
     tl = _timeline(ev, e3_rows)
     figs = {"F1_architecture.svg": fg.f1_architecture(), "F3_cells.svg": fg.f3_cells(prim),
             "F4_effects.svg": fg.f4_deltas(prim), "F5_fact_source.svg": fg.f5_heatmap(res["secondary"], runs),
