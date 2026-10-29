@@ -13,6 +13,7 @@ import pytest
 from fakecluster import FakeCluster
 from frx.analysis import mechanism as mech
 from frx.analysis.inputs import Evidence
+from frx.analysis.public import demo_evidence, environment, registered_freeze
 from frx.analysis.regenerate import audit_sample, rescore_check, status
 from frx.analysis.report import compare, run_all
 from frx.contract import CONTRACT_PATH, PARAMETERS_PATH, load_yaml
@@ -24,65 +25,10 @@ from frx.reconstruct.pipeline import contract_opts, score_package
 
 CON = load_yaml(CONTRACT_PATH)
 FROZEN = load_yaml(PARAMETERS_PATH)        # scoring uses the frozen protocol parameters, as in production
-RATE = {"audit": 20_000.0, "tetragon": 20_000.0}
-PARAMS = {"load": {"replicas": 2, "rate_low_bytes_per_s": RATE, "rate_moderate_bytes_per_s": RATE,
-                   "per_replica_exec_per_s": {"L": 1, "M": 2}, "per_replica_api_per_s": {"L": 1, "M": 2},
-                   "calibration": {"CAL1": {"target_bytes_per_s": RATE, "exec_per_s": 1, "api_per_s": 1},
-                                   "CAL4": {"target_bytes_per_s": RATE, "exec_per_s": 2, "api_per_s": 2}}},
-          "timing": {"load_warmup_block_start_s": 0, "epsilon_s": 5.0, "grace_s": 0.5}}
-
-
-def _cfg(root: Path, out: Path) -> RunConfig:
-    out.mkdir(parents=True, exist_ok=True)
-    return RunConfig(out_root=out, ledger=root / "ledger" / "attempt_ledger.csv", delay_s=1.5, grace_s=0.5,
-                     epsilon_s=5.0, delay_tolerance_s=1.0, settle_s=0.1, warmup_s=0.2, manipulation_window_s=2,
-                     manipulation_tolerance=0.6, namespace_delete_timeout_s=5, control_idle_s=0.3,
-                     mem_min_fraction=0.0, disk_min_bytes=0)
-
-
 @pytest.fixture(scope="module")
 def evidence(tmp_path_factory):
-    root = tmp_path_factory.mktemp("evidence")
-    (root / "ledger").mkdir()
-    # confirmatory: 2 blocks, scored and locked, frozen primary analysis written as in the runbook
-    fc = FakeCluster(root / "c")
-    try:
-        cfg = _cfg(root, root / "runs")
-        sess = open_session(root / "sessions", fc, cfg.ledger, {"stable_hash": "h"}, "h", [], "test")
-        ctx = BlockContext(prefix="RUN", cohort="confirmatory", cfg=cfg, plat=fc, params=PARAMS,
-                           session_dir=sess["dir"], replica_runs=root / "replica" / "runs",
-                           progress=root / "sessions" / "confirmatory_progress.jsonl", log=lambda *_: None)
-        rows = make_schedule(11, 2, "BLOCK")
-        run_confirmatory(rows, ctx, CON, PARAMS, root / "sessions" / "control_checks.jsonl")
-    finally:
-        fc.stop()
-    score_cohort(root / "sessions" / "confirmatory_progress.jsonl", rows, root / "scoring", CON, FROZEN,
-                 root / "analysis_outputs", root / "scoring" / "scores_lock.json")
-    from frx.cli import main as frozen_cli
-    seed = int(load_yaml(Path(__file__).resolve().parents[1] / "protocol" / "parameters.yaml")["design"]["master_seed"])
-    with redirect_stdout(io.StringIO()):
-        frozen_cli(["analyze", str(root / "analysis_outputs" / "scores.csv"), "--seed", str(seed), "--draws", "2000",
-                    "--out", str(root / "analysis_outputs" / "primary.json")])
-    # calibration: a tiny store (15 kB x 1) so that delayed reads do lose records
-    fc2 = FakeCluster(root / "k", max_bytes=15_000, backups=1)
-    try:
-        cfg2 = _cfg(root, root / "calibration" / "runs")
-        sess2 = open_session(root / "calibration" / "sessions", fc2, cfg2.ledger, {"stable_hash": "h"}, "h", [], "t")
-        cal_rows = [{"block": "CAL-BLOCK-01", "slot": i + 1, "cell": "CAL", "load": lvl, "arm": "D", "is_control": 0}
-                    for i, lvl in enumerate(["CAL1", "CAL4", "CAL1", "CAL4"])]
-        ctx2 = BlockContext(prefix="CAL", cohort="calibration", cfg=cfg2, plat=fc2, params=PARAMS,
-                            session_dir=sess2["dir"], replica_runs=root / "replica" / "cal",
-                            progress=root / "calibration" / "calibration_progress.jsonl", log=lambda *_: None)
-        run_cohort(cal_rows, ctx2)
-    finally:
-        fc2.stop()
-    opts = contract_opts(CON)
-    for r in ctx2.runs:
-        if r["disposition"] == "SCORED":
-            score_package(Path(r["package"]), root / "calibration" / "scoring", CON, [opts], opts,
-                          epsilon_s=FROZEN["timing"]["epsilon_s"], grace_s=FROZEN["timing"]["grace_s"],
-                          f5_tolerance_s=CON["facts"]["F5"]["tolerance_s"], in_process=True)
-    return root
+    # the same synthetic store that `python -m frx.analysis demo` builds (frx.analysis.public)
+    return demo_evidence(tmp_path_factory.mktemp("evidence"))
 
 
 def test_status_and_verify(evidence):
@@ -198,3 +144,49 @@ def test_run_level_dataset_rebuilds_published_quantities(evidence, tmp_path):
     bad = ds.rebuild(b.getvalue(), json.loads((out / "results.json").read_text()))
     assert not bad["ok"] and any("primary" in f for f in bad["failed"])
     assert ds.rebuild(text, json.loads((out / "results.json").read_text()))["ok"]
+
+
+def test_compare_ignores_only_the_commit_identifier(evidence, tmp_path):
+    import shutil
+    a = Path(run_all(evidence, tmp_path / "a", draws=2000, allow_dirty=True)["out"])
+    b = tmp_path / "b"
+    shutil.copytree(a, b)
+    c = json.loads((a / "results.json").read_text())["analysis_commit"]
+    other = "f" * 40
+    for p in b.rglob("*"):
+        if p.is_file():
+            p.write_bytes(p.read_bytes().replace(c.encode(), other.encode()).replace(c[:12].encode(), other[:12].encode()))
+    assert not compare(a, b)["ok"] or c == other
+    assert compare(a, b, ignore_commit=True)["ok"]
+    t = b / "tables" / "latex" / "T4_effects.tex"
+    t.write_text(t.read_text().replace("0", "9", 1))
+    assert not compare(a, b, ignore_commit=True)["ok"]                          # a changed number is still caught
+
+
+def test_registered_freeze_and_withheld_files(tmp_path):
+    from frx.freeze import REPO_ROOT
+    r = registered_freeze()
+    if not r["ok"] and any("not found" in p for p in r["problems"]):
+        pytest.skip("frozen tag not present in this clone")
+    assert r["ok"], r["problems"]
+    # the public history withholds only the internal design document (protocol/BLUEPRINT_v3.0.*)
+    assert all(x["file"].startswith("protocol/BLUEPRINT_v3.0.") for x in r["protocol_files_withheld"])
+    # a public history without one protocol file: reported as withheld with its hash, nothing else fails
+    clone = tmp_path / "clone"
+    subprocess.run(["git", "clone", "-q", "--no-local", str(REPO_ROOT), str(clone)], check=True)
+    subprocess.run(["git", "-C", str(clone), "fetch", "-q", "origin", "refs/tags/*:refs/tags/*"], check=True)
+    env = {**__import__("os").environ, "FILTER_BRANCH_SQUELCH_WARNING": "1"}
+    subprocess.run(["git", "-C", str(clone), "filter-branch", "-f", "--index-filter",
+                    "git rm -q --cached --ignore-unmatch protocol/master_seed.json", "--tag-name-filter", "cat",
+                    "--", "--all"], check=True, capture_output=True, env=env)
+    (clone / "protocol" / "registration.json").write_text((REPO_ROOT / "protocol" / "registration.json").read_text())
+    w = registered_freeze(clone)
+    assert w["ok"], w["problems"]
+    withheld = [x["file"] for x in w["protocol_files_withheld"]]
+    assert "protocol/master_seed.json" in withheld
+    assert all(f == "protocol/master_seed.json" or f.startswith("protocol/BLUEPRINT_v3.0.") for f in withheld)
+
+
+def test_environment_record():
+    e = environment()
+    assert e["python"] and any(d.lower().startswith("numpy==") for d in e["distributions"])

@@ -4,9 +4,11 @@ Protocol, tooling and analysis for the study **Forensic Fact Recoverability Afte
 Effects of Acquisition Timing and Background Event Load on Retained Kubernetes Audit and eBPF
 Telemetry** (protocol FRX v3.0, amended v3.0.1).
 
-**Status:** execution and analysis complete. Tag `g7-analysis`. The protocol was frozen and registered
-before the first confirmatory run (`protocol-v3.0.1-frozen`, `protocol/registration.json`).
-Gate records are in `protocol/gates/`.
+**Status:** execution and analysis complete. The release cited by the article is tag
+**`v1.0-submission`**; the cited analysis output set is the one named by that tag's commit
+(`analysis_outputs/<first 12 characters of the commit>`) and is attached to the GitHub release.
+The protocol was frozen and registered before the first confirmatory run (`protocol-v3.0.1-frozen`,
+`protocol/registration.json`, <https://osf.io/b6rv9>). Gate records are in `protocol/gates/`.
 
 ## Objective
 
@@ -55,7 +57,7 @@ The recovered facts are:
 - **Platform:** Kubernetes v1.37.0 (kind) and Tetragon 1.7.1, on an Ubuntu Server VM (Hyper-V).
   WSL2 is not a valid host; see `protocol/gates/G1.md`.
 
-## Results (analysis set `f800d10d989c`)
+## Results (cited analysis set, release `v1.0-submission`)
 
 | | LC | LD | MC | MD |
 |---|---|---|---|---|
@@ -76,7 +78,7 @@ Full tables (T1–T8), figures (F1–F7) and the claims register are regenerated
 
 | Path | Contents |
 |---|---|
-| `protocol/` | blueprint, amendment, contract, parameters, randomization schedule, seed, freeze and registration records, power analysis, gate records and runbooks |
+| `protocol/` | amendment, contract, parameters, randomization schedule, seed, freeze and registration records, power analysis, gate records and runbooks (the internal design document is withheld; see below) |
 | `src/frx/` | harness, acquisition (follower, one-shot copy, growth monitor, reference observers), orchestrator, blinded reconstruction and scoring, statistics, freeze tooling, CLI (`frx`) |
 | `src/frx/analysis/` | G7 analysis layer (`python -m frx.analysis`), added after the freeze |
 | `cluster/` | kind configuration, audit policy, target, RBAC and load-generator manifests |
@@ -91,18 +93,33 @@ Evidence is never committed. It lives in a write-once store (`~/frx-evidence`) w
 ### 1. Environment
 ```bash
 git clone <this repository> && cd Container-Forensic-Fact-Recoverability
-git checkout f800d10d989c            # the analysis commit the cited output set belongs to
+git checkout v1.0-submission        # the release whose commit names the cited output set
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.lock && pip install -e .
 pytest                               # synthetic fixtures; no evidence needed
 ```
-Use Python 3.14. The dependency versions are pinned in `requirements.lock`.
+`requirements.lock` pins the direct dependencies (it is part of the frozen protocol and is not
+edited). The complete environment in which the cited output set was generated (Python version,
+platform and every installed distribution) is recorded in `protocol/gates/G7_ENVIRONMENT.md`
+(`python3 -m frx.analysis environment`).
 
 ### 2. Verify the frozen protocol
 ```bash
-frx freeze-verify                    # protocol files and code digest match protocol/FREEZE.json
-python3 -m frx.analysis frozen-diff  # only the analysis layer and records changed after the freeze
+python3 -m frx.analysis registered-freeze  # FREEZE.json at the frozen tag = registered SHA-256; every
+                                           # protocol file and the code digest checked from git objects
+python3 -m frx.analysis frozen-diff        # only the analysis layer and records changed after the freeze
 ```
+`registered-freeze` lists any file named in `FREEZE.json` that is absent from the public history as
+*withheld*, with its registered hash (see "What is public" below).
+
+### 2a. Run the whole analysis without the study's evidence
+```bash
+python3 -m frx.analysis demo --out /tmp/frx-demo
+```
+This builds a small synthetic evidence store with the simulated cluster of the test suite
+(`tests/fakecluster.py`: 2 blocks, 10 confirmatory attempts, 4 calibration runs), scores and locks it
+as in production, then runs `all` and `rebuild-check` on it. The synthetic numbers have no meaning; the
+point is that every command, table, figure and check runs end to end.
 
 ### 3. Regenerate everything from the evidence store
 ```bash
@@ -115,7 +132,7 @@ python3 -m frx.analysis frozen-diff  # only the analysis layer and records chang
 4. re-running the frozen blinded reconstruction and scoring on all 96 packages, where every locked
    answer and score must match byte for byte;
 5. regenerating every analysis, table and figure, then comparing the result with the cited set
-   `analysis_outputs/f800d10d989c`.
+   `analysis_outputs/<commit>` of the checked-out release.
 6. recomputing the published quantities from the regenerated run-level table (`rebuild-check`).
 
 The final line should read `regenerated output set is identical to …`.
@@ -127,6 +144,7 @@ python3 -m frx.analysis verify        --evidence DIR   # manifests, score lock, 
 python3 -m frx.analysis rescore-check --evidence DIR   # frozen scoring reproduced byte for byte
 python3 -m frx.analysis all           --evidence DIR   # results.json, tables, figures, claims register
 python3 -m frx.analysis compare A B                    # compare two output sets
+python3 -m frx.analysis compare A B --ignore-commit    # ... accepting only each set's own commit identifier
 python3 -m frx.analysis audit-sample  --evidence DIR   # seeded raw-to-fact audit worksheet
 python3 -m frx.analysis rebuild-check RUN_LEVEL_CSV RESULTS_JSON   # published quantities from the run-level table alone
 ```
@@ -147,10 +165,23 @@ definition and recorded source of every column. `rebuild-check` recomputes the p
 delays, write rates, headroom accuracy, Brier scores and loss stages) from these two files and
 `results.json` only, and `data/rebuild_check.json` records the result for the cited set.
 
-### Evidence availability
-The evidence store (acquired logs, sealed truth, growth samples, reference-observer streams, scores)
-is not in this repository. Steps 1–2 and the test suite need no evidence. Steps 3–5 need the store or
-its replica, which is available from the authors on request.
+### What is public, and what is available on request
+| Item | Where |
+|---|---|
+| Code, cluster manifests, scripts, tests | this repository |
+| Frozen protocol files (contract, parameters, schedule, master seed, power outputs, amendment), `FREEZE.json`, registration record | this repository (`protocol/`); registered hash commitment on OSF |
+| Cited analysis output set: `results.json`, tables, figures, claims register, `runs.csv`, `e3_headroom.csv`, `e4_loss_stages.csv`, `data/run_level.csv`, `data/data_dictionary.csv`, `data/rebuild_check.json`, `SHA256SUMS` | asset of the `v1.0-submission` GitHub release; `data/` also as the article's Supplementary Data S1–S2 |
+| Synthetic example evidence | generated by `python3 -m frx.analysis demo` |
+| Internal design document (`protocol/BLUEPRINT_v3.0.md`, `.docx`) | withheld; its SHA-256 is listed in the registered `FREEZE.json`, so a copy supplied to editors or reviewers on request can be checked against the registration |
+| Evidence store: 96 write-once packages (80 confirmatory, 16 calibration) with acquired audit and Tetragon bytes, sealed ground truth and harness journals, 1 Hz growth samples, reference-observer streams, load and timing records, system logs, manifests and the attempt ledger, plus the scoring tree and score lock | not in this repository; available from the corresponding author on request |
+
+Steps 1, 2, 2a and the test suite need no evidence. Steps 3–5 need the evidence store or its replica.
+The run-level table and `rebuild-check` (section 6) need only the release asset.
+
+The public history of this repository does not contain the internal design document. It was
+removed from every commit before the release, so commit identifiers differ from those recorded during
+execution; `protocol/gates/G7_HISTORY.md` maps the earlier identifiers to the public ones. File
+contents, and therefore every hash in `FREEZE.json`, are unchanged.
 
 ## Running a new study
 

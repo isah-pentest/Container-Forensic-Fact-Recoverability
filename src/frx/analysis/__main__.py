@@ -7,6 +7,13 @@
   all            every analysis, table and figure -> <evidence>/analysis_outputs/<commit>/
   compare A B    byte comparison of two output sets (G7 clean-environment regeneration)
   audit-sample   seeded >= 10 % raw-to-fact audit worksheet, stratified by cell
+  compare A B --ignore-commit
+                 the same, accepting differences that are only each set's own analysis commit
+  demo           build a synthetic evidence store (simulated cluster) in --out and run every analysis on it
+  registered-freeze
+                 FREEZE.json at the frozen tag vs the registered SHA-256, each protocol file and the code
+                 digest, from git objects; files absent from the public history are listed as withheld
+  environment    Python version, platform and installed distributions (the analysis environment record)
   rebuild-check CSV RESULTS
                  recompute the published quantities from data/run_level.csv alone and compare them
                  with results.json (no evidence store needed)
@@ -29,13 +36,16 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="python -m frx.analysis", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("command", choices=["status", "verify", "frozen-diff", "rescore-check", "all", "compare",
-                                       "audit-sample", "rebuild-check"])
+                                       "audit-sample", "rebuild-check", "demo", "registered-freeze",
+                                       "environment"])
     p.add_argument("paths", nargs="*")
     p.add_argument("--evidence", default="~/frx-evidence")
     p.add_argument("--out")
     p.add_argument("--draws", type=int, default=100_000)
     p.add_argument("--limit", type=int)
     p.add_argument("--allow-dirty", action="store_true", help="tests only; real outputs need a committed tree")
+    p.add_argument("--ignore-commit", action="store_true", help="compare: ignore each set's own analysis commit")
+    p.add_argument("--ref", default="protocol-v3.0.1-frozen", help="registered-freeze: the frozen tag")
     a = p.parse_args(argv)
     from . import regenerate as rg
     if a.command == "frozen-diff":
@@ -44,9 +54,26 @@ def main(argv=None) -> int:
         return 0 if r["ok"] else 2
     if a.command == "compare":
         from .report import compare
-        r = compare(Path(a.paths[0]), Path(a.paths[1]))
+        r = compare(Path(a.paths[0]), Path(a.paths[1]), ignore_commit=a.ignore_commit)
         _print(r)
         return 0 if r["ok"] else 2
+    if a.command == "registered-freeze":
+        from .public import registered_freeze
+        r = registered_freeze(ref=a.ref)
+        _print(r)
+        return 0 if r["ok"] else 2
+    if a.command == "environment":
+        from .public import environment
+        _print(environment())
+        return 0
+    if a.command == "demo":
+        if not a.out:
+            print("demo needs --out DIR (an empty or new directory)")
+            return 2
+        from .public import demo
+        r = demo(Path(a.out), draws=min(a.draws, 2000))
+        _print(r)
+        return 0 if r["rebuild_ok"] and r["verify_ok"] else 2
     if a.command == "rebuild-check":
         from .dataset import rebuild
         r = rebuild(Path(a.paths[0]).read_text(), json.loads(Path(a.paths[1]).read_text()))

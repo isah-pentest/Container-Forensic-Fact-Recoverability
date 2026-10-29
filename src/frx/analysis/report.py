@@ -159,9 +159,20 @@ def run_all(evidence: Path, out_root: Path | None = None, draws: int = 100_000, 
 
 
 # ---------------------------------------------------------------------- comparison (G7 regeneration)
-def compare(a: Path, b: Path, ignore=("results.json",)) -> dict:
-    """Byte comparison of two output sets; results.json is compared without its generation time."""
+def compare(a: Path, b: Path, ignore=("results.json",), ignore_commit: bool = False) -> dict:
+    """Byte comparison of two output sets; results.json is compared without its generation time.
+    ignore_commit: also accept differences that consist only of each set's own analysis commit
+    (for a set regenerated at a later commit whose analysis code is unchanged)."""
     a, b = Path(a), Path(b)
+    ca = cb = None
+    if ignore_commit:
+        ca = json.loads((a / "results.json").read_text())["analysis_commit"]
+        cb = json.loads((b / "results.json").read_text())["analysis_commit"]
+
+    def _norm(data: bytes, c: str | None) -> bytes:
+        if not c:
+            return data
+        return data.replace(c.encode(), b"<COMMIT>").replace(c[:12].encode(), b"<COMMIT>")
     fa = {str(p.relative_to(a)) for p in a.rglob("*") if p.is_file() and p.name != "SHA256SUMS"}
     fb = {str(p.relative_to(b)) for p in b.rglob("*") if p.is_file() and p.name != "SHA256SUMS"}
     problems = [f"only in {a.name}: {x}" for x in sorted(fa - fb)] + [f"only in {b.name}: {x}" for x in sorted(fb - fa)]
@@ -169,11 +180,12 @@ def compare(a: Path, b: Path, ignore=("results.json",)) -> dict:
         if rel in ignore:
             ja, jb = json.loads((a / rel).read_text()), json.loads((b / rel).read_text())
             for j in (ja, jb):
-                for k in ("generated_at", "evidence"):
+                for k in ("generated_at", "evidence") + (("analysis_commit", "analysis_describe") if ignore_commit else ()):
                     j.pop(k, None)
                 j.get("verify", {}).pop("lock_written", None)
             if ja != jb:
                 problems.append(f"differs: {rel}")
-        elif (a / rel).read_bytes() != (b / rel).read_bytes():
+        elif _norm((a / rel).read_bytes(), ca) != _norm((b / rel).read_bytes(), cb):
             problems.append(f"differs: {rel}")
-    return {"ok": not problems, "compared": len(fa & fb), "problems": problems}
+    return {"ok": not problems, "compared": len(fa & fb), "problems": problems,
+            "commit_identifiers_ignored": [ca, cb] if ignore_commit else None}
