@@ -143,3 +143,41 @@ def test_store_check(tmp_path):
     r = store_check(tmp_path, k=2)
     assert r["pass"] and r["stores"]["audit"]["max_files_present"] == 3 and r["stores"]["audit"]["files_deleted"] == 2
     assert not store_check(tmp_path, k=1)["pass"]
+
+
+def test_sensitivity_from_published_sets(tmp_path):
+    import hashlib
+    from frx.robustness.sensitivity import poisson_binomial_cdf, run
+    assert poisson_binomial_cdf([0.5, 0.5], 0) == pytest.approx(0.25)
+    assert poisson_binomial_cdf([0.2, 0.3, 0.9], 3) == pytest.approx(1.0)
+    m = 10 * MIB
+    hdr = "run_id,cohort,cell,level,fact,source,age_s,rate_bytes_per_s,offset_bytes,written_bytes,H,predicted_lost_H_lt_1,p_loss_formula,file_deleted_before_read,state,observed_lost"
+
+    def write_set(d, name, rows):
+        d.mkdir(parents=True)
+        (d / name).write_text(hdr + "\n" + "\n".join(rows) + "\n")
+        (d / "SHA256SUMS").write_text(f"{hashlib.sha256((d / name).read_bytes()).hexdigest()}  {name}\n")
+    rr = []
+    for i, (lvl, lost) in enumerate((("R3", "False"), ("R3", "False"), ("R4", "True"), ("R4", "True"))):
+        for fact, src in (("F1", "audit"), ("F2", "tetragon")):
+            w = 2.4 * m if lvl == "R3" else 3.2 * m
+            rr.append(f"CAL-{i:04d},robustness,CAL,{lvl},{fact},{src},64.0,{w / 64},{0.1 * m * (i + 1)},{w},1.0,False,0.4,False,CORRECT,{lost}")
+    write_set(tmp_path / "R", "pairs_R.csv", rr)
+    vv = [f"RUN-{i:04d},confirmatory,MD,M,F1,audit,66.0,231303.5,{0.2 * m * i},{231303.5 * 66},1.0,False,0.45,False,CORRECT,False"
+          for i in range(1, 5)]
+    write_set(tmp_path / "V", "e3_headroom.csv", vv)
+    lv = design.levels(FIT, load_yaml(PARAMETERS_PATH))
+    plan = {"k": 2, "M_mib": 10, "levels": {k: lv["levels"][k] for k in ("R3", "R4")}}
+    (tmp_path / "plan.json").write_text(json.dumps(plan))
+    r = run(tmp_path / "R", tmp_path / "V", tmp_path / "plan.json", tmp_path / "out")
+    d = {(x["level"], x["fact"]): x for x in r["decomposition"]}
+    assert d[("R3", "F1")]["expected_registered"] == pytest.approx(1.0, abs=1e-3)       # 2 runs x 0.5
+    assert d[("R3", "F1")]["expected_observed_age"] < d[("R3", "F1")]["expected_registered"]   # younger records
+    assert d[("R3", "F1")]["P_le_observed_observed_age_rate"] == pytest.approx(0.36)   # (1 - 0.4)^2
+    assert "F1-audit" in r["offsets"]["series_R"] and r["v3_0_1_MD"]["F1-audit"]["expected_operating_point"] == 2.0
+    assert (tmp_path / "out" / "tables" / "latex" / "TS5_sensitivity.tex").exists()
+    with pytest.raises(FileExistsError):
+        run(tmp_path / "R", tmp_path / "V", tmp_path / "plan.json", tmp_path / "out")
+    (tmp_path / "R" / "pairs_R.csv").write_text("tampered\n")
+    with pytest.raises(RuntimeError):
+        run(tmp_path / "R", tmp_path / "V", tmp_path / "plan.json", tmp_path / "out2")

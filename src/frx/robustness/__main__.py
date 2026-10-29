@@ -13,6 +13,9 @@ Execution and analysis (after registration):
   run --stores DIR --harness-kubeconfig F --replica DIR [--audit-reference F] [--evidence DIR]
   score [--evidence DIR]           blinded scoring with the frozen scorer, then the series-R score lock
   analyze [--evidence DIR]         registered tests R-T1..R-T4, contrast R-C1, table, figure
+Descriptive, after the registered analysis (registered predictions and results unchanged):
+  sensitivity --robustness-set DIR --cited-set DIR [--out DIR]
+                                   formula probabilities with observed ages and rates; offset distribution
 """
 from __future__ import annotations
 
@@ -30,7 +33,7 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="python -m frx.robustness", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("command", choices=["levels", "store-check", "plan", "freeze", "register", "verify", "run",
-                                       "score", "analyze"])
+                                       "score", "analyze", "sensitivity"])
     p.add_argument("paths", nargs="*")
     p.add_argument("--evidence", default="~/frx-evidence")
     p.add_argument("--load-map")
@@ -44,6 +47,8 @@ def main(argv=None) -> int:
     p.add_argument("--harness-kubeconfig")
     p.add_argument("--replica")
     p.add_argument("--audit-reference")
+    p.add_argument("--robustness-set")
+    p.add_argument("--cited-set")
     a = p.parse_args(argv)
     from . import design, series
     from .freeze import check, write_freeze, write_registration
@@ -79,6 +84,18 @@ def main(argv=None) -> int:
     if a.command == "analyze":
         from .analysis import run_all
         _print(run_all(Path(a.evidence), Path(a.out) if a.out else None))
+        return 0
+    if a.command == "sensitivity":
+        from ..analysis.report import git_state
+        from ..freeze import REPO_ROOT
+        from .freeze import DIR
+        from .sensitivity import run
+        gs = git_state()
+        if gs["dirty"]:
+            print("commit the analysis code first: outputs are tied to an analysis commit")
+            return 2
+        out = Path(a.out) if a.out else Path(a.robustness_set).resolve().parent.parent / "robustness_sensitivity" / gs["short"]
+        _print(run(Path(a.robustness_set), Path(a.cited_set), REPO_ROOT / DIR / "plan.json", out))
         return 0
     return 1
 
