@@ -181,3 +181,41 @@ def test_sensitivity_from_published_sets(tmp_path):
     (tmp_path / "R" / "pairs_R.csv").write_text("tampered\n")
     with pytest.raises(RuntimeError):
         run(tmp_path / "R", tmp_path / "V", tmp_path / "plan.json", tmp_path / "out2")
+
+
+def test_diagnostics_from_published_set(tmp_path):
+    import hashlib
+    from frx.robustness.diagnostics import _lag1, run
+    assert _lag1([1, 2, 3, 4]) == pytest.approx(0.25)
+    m = 10 * MIB
+    hdr = "run_id,cohort,cell,level,fact,source,age_s,rate_bytes_per_s,offset_bytes,written_bytes,H,predicted_lost_H_lt_1,p_loss_formula,file_deleted_before_read,state,observed_lost"
+    levels = ["R3", "R4", "R3", "R4"]
+    rows, runs = [], []
+    for i, lvl in enumerate(levels):
+        rid = f"CAL-{i + 1:04d}"
+        runs.append({"run_id": rid, "load": lvl, "disposition": "SCORED", "replaces_run_id": None})
+        for fact, src in (("F1", "audit"), ("F2", "tetragon")):
+            h = 1.2 if lvl == "R3" else (1.01 if (i, src) == (1, "audit") else 0.8)
+            lost = lvl == "R4" and h < 1
+            rows.append(f"{rid},robustness,CAL,{lvl},{fact},{src},64.0,300000,{0.1 * m * (i + 1)},{300000 * 64},{h},"
+                        f"{h < 1},{0.4 if lvl == 'R3' else 0.9},False,{'ABSTAIN' if lost else 'CORRECT'},{lost}")
+    d = tmp_path / "R"
+    d.mkdir()
+    (d / "pairs_R.csv").write_text(hdr + "\n" + "\n".join(rows) + "\n")
+    (d / "results_R.json").write_text(json.dumps({"runs": runs, "dispositions": {"SCORED": 4}}))
+    (d / "SHA256SUMS").write_text("".join(f"{hashlib.sha256((d / n).read_bytes()).hexdigest()}  {n}\n"
+                                          for n in ("pairs_R.csv", "results_R.json")))
+    (tmp_path / "plan.json").write_text(json.dumps({"k": 2, "M_mib": 10}))
+    (tmp_path / "schedule.csv").write_text("block,slot,cell,load,arm,is_control\n" + "".join(
+        f"CAL-R-BLOCK-01,{i + 1},CAL,{lvl},D,0\n" for i, lvl in enumerate(levels)))
+    r = run(d, tmp_path / "plan.json", tmp_path / "schedule.csv", tmp_path / "out")
+    assert r["execution"]["executed_order_matches_schedule"] and r["execution"]["blocks_in_schedule"] == ["CAL-R-BLOCK-01"]
+    assert r["agreement"]["runs"] == 4 and r["agreement"]["runs_all_correct"] == 4 and r["agreement"]["correct"] == 8
+    assert r["resolution_R"]["pairs_band_contains_1"] == 1          # H = 1.01 within 1/64 of the threshold
+    assert r["resolution_R"]["near_threshold"][0]["run_id"] == "CAL-0002"
+    b = {(x["level"], x["source"]): x for x in r["dependence_bounds"]}
+    assert b[("R3", "audit")]["P_le_observed_independent"] == pytest.approx(0.36)
+    assert b[("R3", "audit")]["P_none_lost_frechet"] == pytest.approx([0.2, 0.6])
+    assert (tmp_path / "out" / "tables" / "latex" / "TS7_agreement.tex").exists()
+    with pytest.raises(FileExistsError):
+        run(d, tmp_path / "plan.json", tmp_path / "schedule.csv", tmp_path / "out")

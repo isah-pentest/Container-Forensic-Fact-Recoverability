@@ -197,6 +197,13 @@ in `<evidence>/robustness/` and its outputs in `<evidence>/analysis_outputs/robu
 None of the v3.0.1 protocol files, evidence or cited output sets is changed. Commands:
 `python -m frx.robustness --help`; steps: `protocol/robustness/RUNBOOK_R.md`.
 
+Descriptive post hoc analyses, which leave every registered prediction, interval and result unchanged
+and read only published, hash-verified output sets: `python -m frx.robustness sensitivity` (formula
+probabilities with observed ages and rates; offset distribution), `python -m frx.robustness diagnostics`
+(execution order, agreement by run and level, 1 Hz resolution near H = 1, serial dependence) and
+`python -m frx.analysis interval-coverage` (block-aware sensitivity intervals for Delta_A and the
+simulated coverage of each interval under the blocked design).
+
 ## Running a new study
 
 The gate runbooks in `protocol/gates/` describe each stage in order, G1–G7:

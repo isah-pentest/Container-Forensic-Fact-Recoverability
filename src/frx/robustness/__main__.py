@@ -16,6 +16,9 @@ Execution and analysis (after registration):
 Descriptive, after the registered analysis (registered predictions and results unchanged):
   sensitivity --robustness-set DIR --cited-set DIR [--out DIR]
                                    formula probabilities with observed ages and rates; offset distribution
+  diagnostics --robustness-set DIR [--cited-set DIR] [--out DIR]
+                                   execution order vs schedule, H < 1 agreement by run and level, 1 Hz
+                                   resolution band near H = 1, serial dependence, dependence bounds
 """
 from __future__ import annotations
 
@@ -33,7 +36,7 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="python -m frx.robustness", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("command", choices=["levels", "store-check", "plan", "freeze", "register", "verify", "run",
-                                       "score", "analyze", "sensitivity"])
+                                       "score", "analyze", "sensitivity", "diagnostics"])
     p.add_argument("paths", nargs="*")
     p.add_argument("--evidence", default="~/frx-evidence")
     p.add_argument("--load-map")
@@ -96,6 +99,19 @@ def main(argv=None) -> int:
             return 2
         out = Path(a.out) if a.out else Path(a.robustness_set).resolve().parent.parent / "robustness_sensitivity" / gs["short"]
         _print(run(Path(a.robustness_set), Path(a.cited_set), REPO_ROOT / DIR / "plan.json", out))
+        return 0
+    if a.command == "diagnostics":
+        from ..analysis.report import git_state
+        from ..freeze import REPO_ROOT
+        from .diagnostics import run as diag
+        from .freeze import DIR
+        gs = git_state()
+        if gs["dirty"]:
+            print("commit the analysis code first: outputs are tied to an analysis commit")
+            return 2
+        out = Path(a.out) if a.out else Path(a.robustness_set).resolve().parent.parent / "robustness_diagnostics" / gs["short"]
+        _print(diag(Path(a.robustness_set), REPO_ROOT / DIR / "plan.json", REPO_ROOT / DIR / "schedule.csv", out,
+                    Path(a.cited_set) if a.cited_set else None))
         return 0
     return 1
 

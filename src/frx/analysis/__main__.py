@@ -17,6 +17,10 @@
   rebuild-check CSV RESULTS
                  recompute the published quantities from data/run_level.csv alone and compare them
                  with results.json (no evidence store needed)
+  interval-coverage CITED_SET [--out DIR] [--sims N]
+                 descriptive post hoc check of the Delta_A interval: registered interval, two block-aware
+                 sensitivity intervals and their Monte Carlo coverage under the blocked design
+                 (registered interval and rule unchanged)
 """
 from __future__ import annotations
 
@@ -37,7 +41,7 @@ def main(argv=None) -> int:
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("command", choices=["status", "verify", "frozen-diff", "rescore-check", "all", "compare",
                                        "audit-sample", "rebuild-check", "demo", "registered-freeze",
-                                       "environment"])
+                                       "environment", "interval-coverage"])
     p.add_argument("paths", nargs="*")
     p.add_argument("--evidence", default="~/frx-evidence")
     p.add_argument("--out")
@@ -45,6 +49,7 @@ def main(argv=None) -> int:
     p.add_argument("--limit", type=int)
     p.add_argument("--allow-dirty", action="store_true", help="tests only; real outputs need a committed tree")
     p.add_argument("--ignore-commit", action="store_true", help="compare: ignore each set's own analysis commit")
+    p.add_argument("--sims", type=int, default=4000, help="interval-coverage: simulated tables per scenario")
     p.add_argument("--ref", default="protocol-v3.0.1-frozen", help="registered-freeze: the frozen tag")
     a = p.parse_args(argv)
     from . import regenerate as rg
@@ -74,6 +79,18 @@ def main(argv=None) -> int:
         r = demo(Path(a.out), draws=min(a.draws, 2000))
         _print(r)
         return 0 if r["rebuild_ok"] and r["verify_ok"] else 2
+    if a.command == "interval-coverage":
+        from ..freeze import REPO_ROOT
+        from .coverage import run as coverage
+        from .report import git_state
+        gs = git_state()
+        if gs["dirty"] and not a.allow_dirty:
+            print("commit the analysis code first: outputs are tied to an analysis commit")
+            return 2
+        cited = Path(a.paths[0]).expanduser().resolve()
+        out = Path(a.out) if a.out else cited.parent / "interval_coverage" / gs["short"]
+        _print(coverage(cited, REPO_ROOT, out, n_sims=a.sims))
+        return 0
     if a.command == "rebuild-check":
         from .dataset import rebuild
         r = rebuild(Path(a.paths[0]).read_text(), json.loads(Path(a.paths[1]).read_text()))
