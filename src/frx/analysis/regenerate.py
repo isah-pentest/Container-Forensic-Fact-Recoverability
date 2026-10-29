@@ -21,7 +21,11 @@ FROZEN_TAG = "protocol-v3.0.1-frozen"
 # Changes allowed after execution: the analysis layer, its tests and the G7 notes and runbook.
 ALLOWED_AFTER_FREEZE = ("src/frx/analysis/*", "tests/test_analysis_*.py", "protocol/gates/G7*.md",
                         "reproduce.sh", "README.md",
-                        "protocol/registration.json")     # written after the freeze by design (it cites FREEZE.json)
+                        "protocol/registration.json",     # written after the freeze by design (it cites FREEZE.json)
+                        # series R: a separately frozen and registered extension (protocol/robustness/FREEZE_R.json)
+                        # that imports the frozen v3.0.1 modules without changing them
+                        "src/frx/robustness/*", "tests/test_robustness_*.py", "protocol/robustness/*",
+                        "scripts/robustness_session.sh")
 
 
 # ---------------------------------------------------------------------- status (dispositions only)

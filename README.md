@@ -186,6 +186,17 @@ removed from every commit before the release, so commit identifiers differ from 
 execution; `protocol/gates/G7_HISTORY.md` maps the earlier identifiers to the public ones. File
 contents, and therefore every hash in `FREEZE.json`, are unchanged.
 
+## Series R: retention-capacity robustness extension (k = 2)
+
+A separately frozen and registered extension (`protocol/robustness/AMENDMENT_R.md`) repeats the
+delayed-acquisition procedure with two retained backups per store instead of one, everything else
+unchanged, to test prospectively whether the headroom rule locates the loss boundary at a second
+retention capacity. It uses the frozen v3.0.1 run, scoring and mechanism functions without changing
+them; its plan, schedule, freeze and registration records are in `protocol/robustness/`, its evidence
+in `<evidence>/robustness/` and its outputs in `<evidence>/analysis_outputs/robustness/<commit>/`.
+None of the v3.0.1 protocol files, evidence or cited output sets is changed. Commands:
+`python -m frx.robustness --help`; steps: `protocol/robustness/RUNBOOK_R.md`.
+
 ## Running a new study
 
 The gate runbooks in `protocol/gates/` describe each stage in order, G1–G7:
