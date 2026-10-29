@@ -1,0 +1,15 @@
+{
+  "series": "R",
+  "frozen_at": "2026-10-29T13:19:31.924793+00:00",
+  "base_commit": "3564bfe05961355c84b49e30f2369cf2b97b91d7",
+  "protocol_files": {
+    "protocol/robustness/AMENDMENT_R.md": "241500bddb4c0c05dd437b141938cf273b221d2ab4a634853a1a0f8fc4451739",
+    "protocol/robustness/plan.json": "d3f487ba63cb97f807a502d1f4e0bd5d6d879025ba0fcacd7fb8245411551e79",
+    "protocol/robustness/schedule.csv": "a4fec535ae262a16eb6acaadf60353d59d27121a586f759af6523a19fa95dfb2"
+  },
+  "code": {
+    "files": 99,
+    "sha256": "454a9fab45dc3f697fd9d916bb668129af6eaede80514b757644818d6438ea90"
+  },
+  "supplements": "protocol v3.0.1 (protocol/FREEZE.json, protocol/registration.json): unchanged"
+}
