@@ -206,7 +206,7 @@ def test_diagnostics_from_published_set(tmp_path):
     (d / "SHA256SUMS").write_text("".join(f"{hashlib.sha256((d / n).read_bytes()).hexdigest()}  {n}\n"
                                           for n in ("pairs_R.csv", "results_R.json")))
     (tmp_path / "plan.json").write_text(json.dumps({"k": 2, "M_mib": 10}))
-    (tmp_path / "schedule.csv").write_text("block,slot,cell,load,arm,is_control\n" + "".join(
+    (tmp_path / "schedule.csv").write_text("# master_seed=29\nblock,slot,cell,load,arm,is_control\n" + "".join(
         f"CAL-R-BLOCK-01,{i + 1},CAL,{lvl},D,0\n" for i, lvl in enumerate(levels)))
     r = run(d, tmp_path / "plan.json", tmp_path / "schedule.csv", tmp_path / "out")
     assert r["execution"]["executed_order_matches_schedule"] and r["execution"]["blocks_in_schedule"] == ["CAL-R-BLOCK-01"]

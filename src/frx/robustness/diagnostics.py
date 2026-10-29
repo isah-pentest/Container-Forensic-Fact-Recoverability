@@ -44,7 +44,8 @@ SEED = 20261029
 
 
 def _schedule(path: Path) -> list[dict]:
-    return list(csv.DictReader(open(path)))
+    from ..cli import _read_schedule          # the frozen reader (skips the "# master_seed=" line)
+    return _read_schedule(Path(path))
 
 
 def execution_order(results: dict, schedule: list[dict]) -> dict:
