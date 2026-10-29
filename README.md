@@ -116,6 +116,7 @@ python3 -m frx.analysis frozen-diff  # only the analysis layer and records chang
    answer and score must match byte for byte;
 5. regenerating every analysis, table and figure, then comparing the result with the cited set
    `analysis_outputs/f800d10d989c`.
+6. recomputing the published quantities from the regenerated run-level table (`rebuild-check`).
 
 The final line should read `regenerated output set is identical to …`.
 
@@ -127,12 +128,24 @@ python3 -m frx.analysis rescore-check --evidence DIR   # frozen scoring reproduc
 python3 -m frx.analysis all           --evidence DIR   # results.json, tables, figures, claims register
 python3 -m frx.analysis compare A B                    # compare two output sets
 python3 -m frx.analysis audit-sample  --evidence DIR   # seeded raw-to-fact audit worksheet
+python3 -m frx.analysis rebuild-check RUN_LEVEL_CSV RESULTS_JSON   # published quantities from the run-level table alone
 ```
 
 ### 5. From a claim to its evidence
 `analysis_outputs/<commit>/claims_register.csv` lists one row per headline number. Each row gives the
 estimand, the metric IDs, the function that computes it, the table or figure that shows it, the run IDs
 behind it and the artifact paths. `results.json` holds every computed value. `SHA256SUMS` covers the set.
+
+### 6. Run-level dataset
+`analysis_outputs/<commit>/data/run_level.csv` has one row per attempt of the confirmatory cohort and
+the calibration series: block, slot, assigned condition, arm and load, disposition, target and measured
+write rates, observed acquisition delay, every fact-source state, the union states, `Y`, the control
+checks and, for each delayed read, the headroom `H`, the formula loss probability and the loss stage of
+each primary fact-source pair. `data/data_dictionary.csv` gives the type, unit, allowed values,
+definition and recorded source of every column. `rebuild-check` recomputes the published quantities
+(cell counts, the frozen primary analysis, run accounting, per-fact and per-source recovery, controls,
+delays, write rates, headroom accuracy, Brier scores and loss stages) from these two files and
+`results.json` only, and `data/rebuild_check.json` records the result for the cited set.
 
 ### Evidence availability
 The evidence store (acquired logs, sealed truth, growth samples, reference-observer streams, scores)

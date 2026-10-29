@@ -166,3 +166,35 @@ def test_cli_entry_point(evidence):
     r = subprocess.run([sys.executable, "-m", "frx.analysis", "status", "--evidence", str(evidence)],
                        capture_output=True, text=True)
     assert r.returncode == 0 and json.loads(r.stdout)["blocks_closed"] == 2
+
+
+def test_run_level_dataset_rebuilds_published_quantities(evidence, tmp_path):
+    from frx.analysis import dataset as ds
+    a = run_all(evidence, tmp_path / "d", draws=2000, allow_dirty=True)
+    assert a["run_level_rebuild_ok"]
+    out = Path(a["out"])
+    rows = list(csv.DictReader(open(out / "data" / "run_level.csv")))
+    dic = list(csv.DictReader(open(out / "data" / "data_dictionary.csv")))
+    assert [d["column"] for d in dic] == list(rows[0].keys()) == ds.COLUMNS     # every column documented
+    assert all(d["type"] and d["definition"] and d["recorded_source"] for d in dic)
+    assert len(rows) == 14                                                        # every attempt, both cohorts
+    assert {r["cohort"] for r in rows} == {"confirmatory", "calibration"}
+    assert all(r["H_F1_audit"] for r in rows if r["arm"] == "D" and r["is_control"] == "0")
+    assert not any(r["H_F1_audit"] for r in rows if r["arm"] == "C")
+    rb = json.loads((out / "data" / "rebuild_check.json").read_text())
+    assert rb["ok"] and len(rb["checks"]) >= 15, rb["failed"]
+    # standalone check from the two files alone
+    cmd = [sys.executable, "-m", "frx.analysis", "rebuild-check", str(out / "data" / "run_level.csv"), str(out / "results.json")]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    assert r.returncode == 0 and json.loads(r.stdout)["ok"], r.stdout[-2000:]
+    # an edited observation is detected
+    text = (out / "data" / "run_level.csv").read_text()
+    i = next(k for k, x in enumerate(rows) if x["cohort"] == "confirmatory" and x["is_control"] == "0")
+    rows[i]["Y"] = "0" if rows[i]["Y"] == "1" else "1"
+    b = io.StringIO()
+    w = csv.DictWriter(b, fieldnames=ds.COLUMNS, lineterminator="\n")
+    w.writeheader()
+    w.writerows(rows)
+    bad = ds.rebuild(b.getvalue(), json.loads((out / "results.json").read_text()))
+    assert not bad["ok"] and any("primary" in f for f in bad["failed"])
+    assert ds.rebuild(text, json.loads((out / "results.json").read_text()))["ok"]

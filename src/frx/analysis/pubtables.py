@@ -277,6 +277,10 @@ def t_integrity(res: dict) -> str:
             _row("Primary analysis reproduced by the frozen command",
                  "yes" if prim.get("_reproduction", {}).get("matches_locked_primary_json") else "no"),
             _row("Analysis commit", rf"\texttt{{{res['analysis_commit'][:12]}}}")]
+    rb = res.get("run_level_rebuild")
+    if rb:
+        body.insert(-1, _row("Published quantities recomputed from the run-level table (checks agreeing)",
+                             f"{rb['agree']}/{rb['checks']}"))
     return _float(rf"{L_COL}{L_COL}", ["Item", "Value"], body)
 
 

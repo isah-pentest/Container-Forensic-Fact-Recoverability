@@ -12,6 +12,7 @@ from pathlib import Path
 
 from ..freeze import REPO_ROOT
 from . import confirmatory as cf
+from . import dataset as ds
 from . import figures as fg
 from . import mechanism as mech
 from . import pubtables as pt
@@ -124,9 +125,16 @@ def run_all(evidence: Path, out_root: Path | None = None, draws: int = 100_000, 
     res["pilot"] = json.loads(pilot.read_text()) if pilot else None
     conf = REPO_ROOT / "protocol" / "power" / "confirm.json"
     res["power"] = json.loads(conf.read_text()) if conf.exists() else None
+    # run-level dataset, its data dictionary and the check that the published quantities follow from it
+    rl = ds.run_level_csv(ds.run_level(ev, e3_rows, res["e4"]["items"]))
+    rb = ds.rebuild(rl, json.loads(json.dumps({k: v for k, v in res.items() if k != "runs_all"}, default=str)))
+    res["run_level_rebuild"] = {"ok": rb["ok"], "rows": rb["rows"], "checks": len(rb["checks"]),
+                                "agree": sum(c["ok"] for c in rb["checks"]), "failed": rb["failed"]}
     files = {"results.json": json.dumps({k: v for k, v in res.items() if k not in ("runs_all",)}, indent=2, default=str) + "\n",
              "runs.csv": _csv_text(runs), "e3_headroom.csv": _csv_text(e3_rows),
              "e4_loss_stages.csv": _csv_text(res["e4"]["items"]), "claims_register.csv": _csv_text(claims(res))}
+    files.update({"data/run_level.csv": rl, "data/data_dictionary.csv": ds.dictionary_csv(),
+                  "data/rebuild_check.json": json.dumps(rb, indent=2) + "\n"})
     files.update(tb.render(tb.build(res)))
     files.update(pt.build(res))
     tl = _timeline(ev, e3_rows)
@@ -146,7 +154,8 @@ def run_all(evidence: Path, out_root: Path | None = None, draws: int = 100_000, 
         sums.append(f"{hashlib.sha256(text.encode()).hexdigest()}  {rel}\n")
     (out / "SHA256SUMS").write_text("".join(sums))
     return {"out": str(out), "files": len(files), "commit": gs["short"], "verify_ok": ver["ok"],
-            "primary_reproduced": prim["_reproduction"]["matches_locked_primary_json"]}
+            "primary_reproduced": prim["_reproduction"]["matches_locked_primary_json"],
+            "run_level_rebuild_ok": rb["ok"]}
 
 
 # ---------------------------------------------------------------------- comparison (G7 regeneration)

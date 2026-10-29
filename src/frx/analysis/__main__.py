@@ -7,6 +7,9 @@
   all            every analysis, table and figure -> <evidence>/analysis_outputs/<commit>/
   compare A B    byte comparison of two output sets (G7 clean-environment regeneration)
   audit-sample   seeded >= 10 % raw-to-fact audit worksheet, stratified by cell
+  rebuild-check CSV RESULTS
+                 recompute the published quantities from data/run_level.csv alone and compare them
+                 with results.json (no evidence store needed)
 """
 from __future__ import annotations
 
@@ -26,7 +29,7 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="python -m frx.analysis", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("command", choices=["status", "verify", "frozen-diff", "rescore-check", "all", "compare",
-                                       "audit-sample"])
+                                       "audit-sample", "rebuild-check"])
     p.add_argument("paths", nargs="*")
     p.add_argument("--evidence", default="~/frx-evidence")
     p.add_argument("--out")
@@ -43,6 +46,12 @@ def main(argv=None) -> int:
         from .report import compare
         r = compare(Path(a.paths[0]), Path(a.paths[1]))
         _print(r)
+        return 0 if r["ok"] else 2
+    if a.command == "rebuild-check":
+        from .dataset import rebuild
+        r = rebuild(Path(a.paths[0]).read_text(), json.loads(Path(a.paths[1]).read_text()))
+        _print({k: v for k, v in r.items() if k != "checks"} |
+               {"checks": [{"quantity": c["quantity"], "ok": c["ok"]} for c in r["checks"]]})
         return 0 if r["ok"] else 2
     from .inputs import Evidence
     ev = Evidence(Path(a.evidence))

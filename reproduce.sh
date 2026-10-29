@@ -5,6 +5,7 @@
 #   3. integrity: score lock, analysis input, every package and scoring manifest
 #   4. re-run the frozen blinded reconstruction and scoring; locked answers and scores must match byte for byte
 #   5. regenerate every analysis, table and figure into OUTPUT_DIR and compare with the committed output set
+#   6. recompute the published quantities from data/run_level.csv alone
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 EVID="${1:?usage: ./reproduce.sh EVIDENCE_DIR [OUTPUT_DIR]}"
@@ -26,4 +27,6 @@ if [ -d "$REF" ]; then
 else
   echo "no committed output set for $COMMIT in $EVID/analysis_outputs; regenerated set left at $OUT"
 fi
+echo "== 6. published quantities from the run-level table"
+$A rebuild-check "$OUT/data/run_level.csv" "$OUT/results.json" > /dev/null || { $A rebuild-check "$OUT/data/run_level.csv" "$OUT/results.json"; exit 6; }
 echo "== reproduction complete"
