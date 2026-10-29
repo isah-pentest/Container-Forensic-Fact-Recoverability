@@ -140,6 +140,10 @@ def test_all_outputs_are_complete_and_reproducible(evidence, tmp_path):
         tex = (out / "tables" / "latex" / f"{name}.tex").read_text()
         assert tex.isascii() and tex.count("\\begin{tabularx}") == 1, name
         assert "\\caption" not in tex and "\\begin{table}" not in tex, name   # manuscript text stays out of the repo
+    import re as _re
+    for name in ("T4_effects", "S1_sensitivity"):   # effect estimates at 4 decimals, matching the manuscript text
+        first = (out / "tables" / "latex" / f"{name}.tex").read_text().split("\\midrule", 1)[1].splitlines()[1]
+        assert _re.search(r"\d\.\d{4}(?!\d)", first), (name, first)
     res = json.loads((out / "results.json").read_text())
     assert set(res["sensitivity"]) >= {"S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9"}
     assert res["validity"]["M14_false_attribution"]["x"] == 0

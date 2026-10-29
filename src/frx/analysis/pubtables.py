@@ -14,6 +14,7 @@ CELLS = ("LC", "LD", "MC", "MD")
 FS = (("F1", "audit"), ("F2", "audit"), ("F2", "tetragon"), ("F3", "audit"))
 SRC = {"audit": "Audit", "tetragon": "Tetragon"}
 L_COL = r">{\raggedright\arraybackslash}X"
+EFF_D = 4   # effect estimates to 4 decimals (as in the manuscript text); intervals stay at 3
 
 
 def _n(v: float, d: int = 3) -> str:
@@ -152,7 +153,7 @@ def t_effects(res: dict) -> str:
         (r"$\Delta_{AS}$, interaction", "exploratory", e1, "--", "Estimate only"),
     ]
     short = lambda r: "MOVER-Wilson" if r.startswith("MOVER") else r
-    body = [_row(rf"{lab}; {role}", _n(e["estimate"]), _ci(e["ci_reported"]), short(e["ci_rule"]), tst, dec)
+    body = [_row(rf"{lab}; {role}", _n(e["estimate"], EFF_D), _ci(e["ci_reported"]), short(e["ci_rule"]), tst, dec)
             for lab, role, e, tst, dec in rows]
     return _float(f"{L_COL}cll{L_COL}l",
                   ["Effect", "Estimate", "95\\% CI", "CI method", "Test", "Decision"], body)
@@ -222,15 +223,15 @@ def t_sensitivity(res: dict) -> str:
     lab = {"S1": "Exclude runs with collector failures", "S2": "Exclude delayed runs outside the delay tolerance",
            "S4": "Exclude runs with source drop events", "S5": "Exclude blocks with any false attribution",
            "S7": "Exclude runs attributed by container-ID fallback"}
-    body = [_row("Primary analysis", "--", _n(prim["H1"]["estimate"]), rf"$p = {_p(prim['H1']['p_value'])}$")]
+    body = [_row("Primary analysis", "--", _n(prim["H1"]["estimate"], EFF_D), rf"$p = {_p(prim['H1']['p_value'])}$")]
     for k in ("S1", "S2", "S4", "S5", "S7"):
         h = sens[k].get("H1") or {}
         body.append(_row(f"{k}: {lab[k]}", len(sens[k]["excluded_runs"]),
-                         _n(h["estimate"]) if "estimate" in h else "--",
+                         _n(h["estimate"], EFF_D) if "estimate" in h else "--",
                          rf"$p = {_p(h['p_value'])}$" if "p_value" in h else "--"))
     for src, v in sens["S8"].items():
         h = v.get("H1") or {}
-        body.append(_row(f"S8: F2 from {SRC.get(src, src)} only", "--", _n(h["estimate"]), rf"$p = {_p(h['p_value'])}$"))
+        body.append(_row(f"S8: F2 from {SRC.get(src, src)} only", "--", _n(h["estimate"], EFF_D), rf"$p = {_p(h['p_value'])}$"))
     s3 = sens["S3"]["spearman"]
     if s3.get("rho") is not None:
         body.append(_row("S3: block contrast vs block order (Spearman)", "--", rf"$\rho = {_n(s3['rho'])}$",
@@ -240,7 +241,7 @@ def t_sensitivity(res: dict) -> str:
                      " / ".join(str(d.get("CORRECT", 0)) for d in s6.values()), ""))
     mw = sens["S9"]["mover_wilson"]
     body.append(_row("S9: include incomplete blocks (MOVER-Wilson)", len(sens["S9"]["incomplete_blocks"] or []),
-                     _n(mw[0]), _ci(mw[1:])))
+                     _n(mw[0], EFF_D), _ci(mw[1:])))
     body.append(_row("Block-paired interval for $\\Delta_A$ (not used; rule triggered MOVER-Wilson)", "--", "",
                      _ci(prim["H1"]["ci_t"])))
     pw = (res.get("power") or {}).get("rows") or {}
