@@ -36,8 +36,16 @@ class Canvas:
                 else:
                     parts.append(f"<tspan>{escape(t)}</tspan>")
             body = "".join(parts)
+        # xml:space='preserve': spaces at segment boundaries ("Difference in " + italic "P") are kept by
+        # renderers that strip leading/trailing white space per text node (e.g. Inkscape in the LaTeX build)
         self.items.append(f"<text x='{x:.1f}' y='{y:.1f}' font-size='{size}' text-anchor='{anchor}' fill='{color}' "
-                          f"font-weight='{weight}' {FONT}{tr}>{body}</text>")
+                          f"font-weight='{weight}' {FONT}{tr} xml:space='preserve'>{body}</text>")
+
+    def label_box(self, x, y, s: str, size=12, color=INK):
+        """Left-anchored label on a white backing box, so that lines drawn earlier pass behind it."""
+        w = 0.56 * size * len(s) + 4
+        self.rect(x - 2, y - size + 1, w, size + 3, "white", "none")
+        self.text(x, y, s, size, "start", color)
 
     def polygon(self, pts, fill=ACCENT, stroke="none", width=1.0):
         d = " ".join(f"{x:.1f},{y:.1f}" for x, y in pts)

@@ -90,12 +90,13 @@ def f2_timeline(tl: dict) -> str:
     c.text(ax(-tl["epsilon_s"]) + 4, 43, [("record window [", None), ("A", "it"), (" − ", None), ("ε", "it"),
                                           (", ", None), ("T", "it"), (" + ", None), ("g", "it"), ("]", None)],
            FS_S - 0.5, "start", MUTED)
-    for i, (name, lab) in enumerate((("CREATE_CONFIRMED", "pod created"), ("EXEC_CONFIRMED", "command executed"),
-                                      ("TERMINATION_CONFIRMED", "termination confirmed (T)"))):
-        if name in tl["states"]:
-            x = ax(rel(tl["states"][name]))
-            c.line(x, 60, x, 122 + 15 * i, INK, 1.2)
-            c.text(x + 4, 126 + 15 * i, lab, FS_S - 0.5, "start")
+    events = [(ax(rel(tl["states"][name])), lab, i) for i, (name, lab) in enumerate(
+        (("CREATE_CONFIRMED", "pod created"), ("EXEC_CONFIRMED", "command executed"),
+         ("TERMINATION_CONFIRMED", "termination confirmed (T)"))) if name in tl["states"]]
+    for x, _, i in events:                      # lines first, labels on backing boxes after, so no line crosses a label
+        c.line(x, 60, x, 122 + 15 * i, INK, 1.2)
+    for x, lab, i in events:
+        c.label_box(x + 4, 126 + 15 * i, lab, FS_S - 0.5)
     c.line(ax(term + tl["grace_s"]), 60, ax(term + tl["grace_s"]), 112, ACCENT, 1.4, "4 3")
     c.text(ax(term + tl["grace_s"]) + 4, 70, [("T", "it"), (" + ", None), ("g", "it")], FS_S - 0.5, "start", ACCENT)
     c.line(ax(term + tl["delay_s"]), 60, ax(term + tl["delay_s"]), 150, ACCENT2, 2)
@@ -163,7 +164,7 @@ def f4_deltas(primary: dict, mie: float = -0.25) -> str:
             c.arrow(ax(chi) - 8, y, ax(chi), y)
         c.circle(ax(e["estimate"]), y, 5.5, ACCENT2 if i == 0 else MUTED)
         c.text(462, y - 2, f"{fmt(e['estimate'])} [{fmt(lo)}, {fmt(hi)}]", FS_S, "start")
-        note = (f"p = {e['p_value']:.3f}" if tested and "p_value" in e else
+        note = ([("p", "it"), (f" = {e['p_value']:.3f}", None)] if tested and "p_value" in e else
                 ("not tested (fixed sequence)" if i == 1 else "estimate only"))
         c.text(462, y + 13, note, FS_S - 1, "start", MUTED)
     return c.render()
@@ -282,20 +283,24 @@ def f7_calibration(e3: dict, rows: list[dict] | None = None) -> str:
     c.text(400, 16, "(b)", FS, "start", weight="bold")
     bx, by = Axis(0, 1, 455, 740), Axis(0, 1, 240, 30)
     x_axis(c, bx, 240, [0, 0.25, 0.5, 0.75, 1.0], "{:.2f}", "Predicted loss probability", size=FS_S, label_size=FS)
-    y_axis(c, by, 455, [0, 0.25, 0.5, 0.75, 1.0], "{:.2f}", "Observed loss proportion", grid_to=740, size=FS_S,
-           label_size=FS, label_dx=46)
+    y_axis(c, by, 455, [0, 0.25, 0.5, 0.75, 1.0], lambda t: "" if t == 0 else f"{t:.2f}", "Observed loss proportion",
+           grid_to=740, size=FS_S, label_size=FS, label_dx=46)
     c.line(bx(0), by(0), bx(1), by(1), MUTED, 1, "5 4")
     shapes = {"F1-audit": 0, "F2-audit": 1, "F3-audit": 2, "F2-tetragon": 3}
     for key, d in e3.get("by_fact_source", {}).items():
         k = shapes.get(key, 0)
-        col = ACCENT2 if key.endswith("tetragon") else ACCENT
+        tet = key.endswith("tetragon")
         for lvl, v in d["by_level"].items():
             x, y = bx(v["mean_p_formula"]), by(v["lost"] / v["n"])
             lo, hi = v["wilson95"]
-            c.line(x, by(lo), x, by(hi), col, 1)
-            c.circle(x, y, 3 + 1.8 * k, "none", col, 1.1)
-    c.circle(470, 308, 3.6, "none", ACCENT, 1.1)
-    c.text(478, 312, "audit, F1–F3 (ring size by fact)", FS_S - 1, "start", MUTED)
-    c.circle(672, 308, 3.6, "none", ACCENT2, 1.1)
-    c.text(680, 312, "Tetragon, F2", FS_S - 1, "start", MUTED)
+            c.line(x, by(lo), x, by(hi), INK, 1)
+            if tet:
+                c.polygon([(x, y - 6.5), (x - 6, y + 4.5), (x + 6, y + 4.5)], "none", INK, 1.1)
+            else:
+                c.circle(x, y, 3 + 1.8 * k, "none", INK, 1.1)
+    c.circle(470, 308, 3.6, "none", INK, 1.1)
+    c.circle(470, 308, 7.2, "none", INK, 1.1)
+    c.text(482, 312, "audit, F1–F3 (ring size by fact)", FS_S - 1, "start", MUTED)
+    c.polygon([(678, 302.5), (672.8, 311.2), (683.2, 311.2)], "none", INK, 1.1)
+    c.text(688, 312, "Tetragon, F2", FS_S - 1, "start", MUTED)
     return c.render()
