@@ -1,0 +1,16 @@
+{
+  "series": "F",
+  "frozen_at": "2026-11-20T23:01:49.711415+00:00",
+  "base_commit": "c1cd4e61c9c20cf863747be910fde23642ac0d10",
+  "protocol_files": {
+    "protocol/flooding/AMENDMENT_F.md": "49976ce52e10b9bdf5221453f1df2d7da5c551022b279ee516da9b8709c7c237",
+    "protocol/flooding/plan.json": "0805554ad2a6a20e26b5bf5ed86e7e947ffc0c7e2d221b13ecf5eb6213bcf1b9",
+    "protocol/flooding/schedule.csv": "0fbeb0344d791bdef0d068ea1681d6b204f0868524bb7b4178fce1e1c7c1f5cf"
+  },
+  "code": {
+    "files": 112,
+    "sha256": "110ca0df908f9296dc019719fc15cf55132d01a7e1cf4467f09c5a93874f8c21"
+  },
+  "public_record": "commit adding this file, tagged series-F-frozen and pushed before the first counted run",
+  "supplements": "protocol v3.0.1 and series R: unchanged"
+}
