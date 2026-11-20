@@ -1,0 +1,335 @@
+{
+  "series": "F",
+  "created_at": "2026-11-20T23:01:18.480233+00:00",
+  "supplements_protocol": "3.0.1",
+  "k": 1,
+  "M_mib": 10,
+  "delay_s": 60,
+  "flood_window_s": 50.0,
+  "base_level": "L",
+  "replicas": 18,
+  "base": {
+    "knob": {
+      "exec_per_s": 0.545,
+      "api_per_s": 1.621
+    },
+    "target_bytes_per_s": {
+      "audit": 42834.0,
+      "tetragon": 46233.5
+    }
+  },
+  "levels": {
+    "F0": {
+      "flood": null,
+      "predicted": {
+        "F1-audit": {
+          "age_s": 68.0,
+          "written_bytes": 2912712.0,
+          "W_over_kM": 0.27777786254882814,
+          "W_over_k1M": 0.13888893127441407,
+          "H_worst_offset": 3.5999989013675227,
+          "H_best_offset": 7.199997802735045,
+          "p_loss_formula": 0.0
+        },
+        "F2-audit": {
+          "age_s": 63.0,
+          "written_bytes": 2698542.0,
+          "W_over_kM": 0.2573530197143555,
+          "W_over_k1M": 0.12867650985717774,
+          "H_worst_offset": 3.8857130998887546,
+          "H_best_offset": 7.771426199777509,
+          "p_loss_formula": 0.0
+        },
+        "F3-audit": {
+          "age_s": 60.0,
+          "written_bytes": 2570040.0,
+          "W_over_kM": 0.24509811401367188,
+          "W_over_k1M": 0.12254905700683594,
+          "H_worst_offset": 4.079998754883192,
+          "H_best_offset": 8.159997509766384,
+          "p_loss_formula": 0.0
+        },
+        "F2-tetragon": {
+          "age_s": 63.0,
+          "written_bytes": 2912710.5,
+          "W_over_kM": 0.27777771949768065,
+          "W_over_k1M": 0.13888885974884033,
+          "H_worst_offset": 3.600000755310217,
+          "H_best_offset": 7.200001510620434,
+          "p_loss_formula": 0.0
+        }
+      },
+      "predicted_outcome": "retained"
+    },
+    "F1": {
+      "flood": {
+        "source_setting": "CAL1",
+        "knob": {
+          "exec_per_s": 1.473,
+          "api_per_s": 4.624
+        },
+        "target_bytes_per_s": {
+          "audit": 115651.8,
+          "tetragon": 124830.5
+        }
+      },
+      "predicted": {
+        "F1-audit": {
+          "age_s": 68.0,
+          "written_bytes": 6553602.0,
+          "W_over_kM": 0.6250001907348632,
+          "W_over_k1M": 0.3125000953674316,
+          "H_worst_offset": 1.599999511718899,
+          "H_best_offset": 3.199999023437798,
+          "p_loss_formula": 0.0
+        },
+        "F2-audit": {
+          "age_s": 63.0,
+          "written_bytes": 6339432.0,
+          "W_over_kM": 0.6045753479003906,
+          "W_over_k1M": 0.3022876739501953,
+          "H_worst_offset": 1.65405354927697,
+          "H_best_offset": 3.30810709855394,
+          "p_loss_formula": 0.0
+        },
+        "F3-audit": {
+          "age_s": 60.0,
+          "written_bytes": 6210930.0,
+          "W_over_kM": 0.592320442199707,
+          "W_over_k1M": 0.2961602210998535,
+          "H_worst_offset": 1.6882753468482177,
+          "H_best_offset": 3.3765506936964353,
+          "p_loss_formula": 0.0
+        },
+        "F2-tetragon": {
+          "age_s": 63.0,
+          "written_bytes": 6842560.5,
+          "W_over_kM": 0.6525574207305909,
+          "W_over_k1M": 0.32627871036529543,
+          "H_worst_offset": 1.5324321940595191,
+          "H_best_offset": 3.0648643881190383,
+          "p_loss_formula": 0.0
+        }
+      },
+      "predicted_outcome": "retained"
+    },
+    "F2": {
+      "flood": {
+        "source_setting": "CAL3",
+        "knob": {
+          "exec_per_s": 3.682,
+          "api_per_s": 11.778
+        },
+        "target_bytes_per_s": {
+          "audit": 289129.4,
+          "tetragon": 312076.2
+        }
+      },
+      "predicted": {
+        "F1-audit": {
+          "age_s": 68.0,
+          "written_bytes": 15227482.000000002,
+          "W_over_kM": 1.4522058486938478,
+          "W_over_k1M": 0.7261029243469239,
+          "H_worst_offset": 0.6886076108971922,
+          "H_best_offset": 1.3772152217943845,
+          "p_loss_formula": 0.45220584869384783
+        },
+        "F2-audit": {
+          "age_s": 63.0,
+          "written_bytes": 15013312.000000002,
+          "W_over_kM": 1.4317810058593752,
+          "W_over_k1M": 0.7158905029296876,
+          "H_worst_offset": 0.6984308325837763,
+          "H_best_offset": 1.3968616651675525,
+          "p_loss_formula": 0.4317810058593752
+        },
+        "F3-audit": {
+          "age_s": 60.0,
+          "written_bytes": 14884810.000000002,
+          "W_over_kM": 1.4195261001586916,
+          "W_over_k1M": 0.7097630500793458,
+          "H_worst_offset": 0.7044604533077681,
+          "H_best_offset": 1.4089209066155362,
+          "p_loss_formula": 0.4195261001586916
+        },
+        "F2-tetragon": {
+          "age_s": 63.0,
+          "written_bytes": 16204845.5,
+          "W_over_kM": 1.5454144954681397,
+          "W_over_k1M": 0.7727072477340698,
+          "H_worst_offset": 0.647075592297378,
+          "H_best_offset": 1.294151184594756,
+          "p_loss_formula": 0.5454144954681397
+        }
+      },
+      "predicted_outcome": "depends on offset"
+    },
+    "F3": {
+      "flood": {
+        "source_setting": "CAL4",
+        "knob": {
+          "exec_per_s": 5.892,
+          "api_per_s": 18.933
+        },
+        "target_bytes_per_s": {
+          "audit": 462607.1,
+          "tetragon": 499321.9
+        }
+      },
+      "predicted": {
+        "F1-audit": {
+          "age_s": 68.0,
+          "written_bytes": 23901367.0,
+          "W_over_kM": 2.2794119834899904,
+          "W_over_k1M": 1.1397059917449952,
+          "H_worst_offset": 0.43870963531081714,
+          "H_best_offset": 0.8774192706216343,
+          "p_loss_formula": 1.0
+        },
+        "F2-audit": {
+          "age_s": 63.0,
+          "written_bytes": 23687197.0,
+          "W_over_kM": 2.2589871406555178,
+          "W_over_k1M": 1.1294935703277589,
+          "H_worst_offset": 0.4426762693787703,
+          "H_best_offset": 0.8853525387575406,
+          "p_loss_formula": 1.0
+        },
+        "F3-audit": {
+          "age_s": 60.0,
+          "written_bytes": 23558695.0,
+          "W_over_kM": 2.246732234954834,
+          "W_over_k1M": 1.123366117477417,
+          "H_worst_offset": 0.4450908677242097,
+          "H_best_offset": 0.8901817354484194,
+          "p_loss_formula": 1.0
+        },
+        "F2-tetragon": {
+          "age_s": 63.0,
+          "written_bytes": 25567130.5,
+          "W_over_kM": 2.4382715702056883,
+          "W_over_k1M": 1.2191357851028441,
+          "H_worst_offset": 0.410126588120634,
+          "H_best_offset": 0.820253176241268,
+          "p_loss_formula": 1.0
+        }
+      },
+      "predicted_outcome": "lost"
+    }
+  },
+  "rules": {
+    "F1_max_W_over_kM": 0.8,
+    "F3_min_W_over_k1M": 1.1
+  },
+  "cells": [
+    {
+      "cell": "CAL",
+      "arm": "D",
+      "level": "F0",
+      "is_control": 0,
+      "runs": 4
+    },
+    {
+      "cell": "CAL",
+      "arm": "D",
+      "level": "F1",
+      "is_control": 0,
+      "runs": 4
+    },
+    {
+      "cell": "CAL",
+      "arm": "D",
+      "level": "F2",
+      "is_control": 0,
+      "runs": 4
+    },
+    {
+      "cell": "CAL",
+      "arm": "D",
+      "level": "F3",
+      "is_control": 0,
+      "runs": 4
+    },
+    {
+      "cell": "CAL",
+      "arm": "C",
+      "level": "F3",
+      "is_control": 0,
+      "runs": 6
+    },
+    {
+      "cell": "NC",
+      "arm": "D",
+      "level": "F3",
+      "is_control": 1,
+      "runs": 4
+    }
+  ],
+  "fingerprint_stable_hash": "0a4024d7e1490033a6c2fcdbdb94ab06166b3f67f3dc40794ad587dbe1ec0429",
+  "inputs": {
+    "g1": {
+      "path": "/home/pentestnet/frx-evidence-F/flooding/qualification/g1_F.json",
+      "sha256": "d84f6375365a2c87d38b3a52d7f83b1ce092e047eb64e0906c2940003d1eeaa2",
+      "pass": true
+    },
+    "capacity_report": {
+      "path": "/home/pentestnet/frx-evidence-F/flooding/qualification/capacity_20261120T223731Z/capacity_report.json",
+      "sha256": "8551253a256a1b4f1dbd7c9a0cb01b128461c310092f198126304890630d3d5b",
+      "pass": true
+    },
+    "store_check": {
+      "path": "/home/pentestnet/frx-evidence-F/flooding/qualification/store_check.json",
+      "sha256": "b6091428d572296404ee96c779c293d9da709156f7e05009eaf6f7f8842c7cdf",
+      "pass": true
+    }
+  },
+  "schedule": {
+    "seed": 864067897543811073,
+    "file": "protocol/flooding/schedule.csv"
+  },
+  "registered_tests": [
+    {
+      "id": "F-T1",
+      "kind": "prospective, deterministic",
+      "statement": "For every delayed-read record-source pair of the positive runs at F0-F3 (audit F1, F2, F3; Tetragon F2), the record is lost (state not CORRECT) if and only if its measured headroom H < 1, with H = ((M - o) + k M) / W, k = 1, o the offset of the record at write time and W the bytes written to the store between the record and the read, both measured by the 1 Hz growth monitor.",
+      "decision": "supported if every pair with a measured H is classified correctly; any misclassified pair is reported with its run, level, fact, source and H."
+    },
+    {
+      "id": "F-T2",
+      "kind": "prospective, deterministic",
+      "statement": "No primary record is lost at F0 (no flood) or F1 (W <= 0.8 k M under the frozen targets).",
+      "decision": "supported if 0 of the F0 and F1 record-source pairs are lost."
+    },
+    {
+      "id": "F-T3",
+      "kind": "prospective, deterministic",
+      "statement": "Every continuous-arm run with the F3 flood recovers every primary fact (Y = 1) with zero follower gaps.",
+      "decision": "supported if all F3-C runs scored have Y = 1 and zero gaps; collector failures are reported."
+    },
+    {
+      "id": "F-C1",
+      "kind": "prospective, deterministic",
+      "statement": "No negative-control run with the F3 flood and no action yields a false attribution.",
+      "decision": "supported if no F3-NC run scored has false_attribution = true."
+    },
+    {
+      "id": "F-D1",
+      "kind": "descriptive",
+      "statement": "Bytes written and files rotated per store during the flood window, per run (growth monitor metadata).",
+      "decision": "reported; not a test."
+    },
+    {
+      "id": "F-D2",
+      "kind": "descriptive",
+      "statement": "Flood-controller latency: TERMINATION_CONFIRMED to rate patch acknowledged, and flood duration.",
+      "decision": "reported; not a test."
+    },
+    {
+      "id": "F-C2",
+      "kind": "contrast (descriptive)",
+      "statement": "H computed with the frozen series-R estimator (one mean rate over [action - 15 s, read]) next to the burst-aware H of F-T1, to show the effect of assuming a constant rate under a burst.",
+      "decision": "accuracy reported; not a test."
+    }
+  ]
+}
