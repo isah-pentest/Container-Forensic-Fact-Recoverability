@@ -27,6 +27,12 @@ keywords:
   - eBPF
   - Tetragon
 identifiers:
+  - type: doi
+    value: "10.5281/zenodo.24527302"
+    description: "Zenodo archive, all versions (concept DOI)"
+  - type: doi
+    value: "10.5281/zenodo.24527303"
+    description: "Zenodo archive of release v1.3-archive"
   - type: url
     value: "https://osf.io/b6rv9"
     description: "OSF registration of the confirmatory study"
