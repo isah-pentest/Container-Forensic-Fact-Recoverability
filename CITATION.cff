@@ -1,0 +1,48 @@
+cff-version: 1.2.0
+message: "If you use this software, its protocol or its output sets, please cite the article below and this repository."
+title: "Container Forensic Fact Recoverability: protocol, analysis code and output sets"
+type: software
+authors:
+  - family-names: Mohammed
+    given-names: Isah
+    affiliation: "Department of Computer Science, Sam Houston State University"
+    orcid: "https://orcid.org/0009-0008-0618-744X"
+  - family-names: Liu
+    given-names: Qingzhong
+    affiliation: "Department of Computer Science, Sam Houston State University"
+  - family-names: Shashidhar
+    given-names: Narasimha
+    affiliation: "Department of Computer Science, Sam Houston State University"
+    orcid: "https://orcid.org/0000-0002-4877-158X"
+repository-code: "https://github.com/isah-pentest/Container-Forensic-Fact-Recoverability"
+license: MIT
+keywords:
+  - Kubernetes forensics
+  - forensic fact recoverability
+  - evidence retention
+  - log rotation
+  - log flooding
+  - acquisition timing
+  - audit logs
+  - eBPF
+  - Tetragon
+identifiers:
+  - type: url
+    value: "https://osf.io/b6rv9"
+    description: "OSF registration of the confirmatory study"
+  - type: doi
+    value: "10.17605/OSF.IO/TQCXM"
+    description: "OSF registration of the robustness series"
+preferred-citation:
+  type: article
+  title: "Forensic Fact Recoverability from Kubernetes Audit and eBPF Telemetry"
+  authors:
+    - family-names: Mohammed
+      given-names: Isah
+      orcid: "https://orcid.org/0009-0008-0618-744X"
+    - family-names: Liu
+      given-names: Qingzhong
+    - family-names: Shashidhar
+      given-names: Narasimha
+      orcid: "https://orcid.org/0000-0002-4877-158X"
+  journal: "Electronics"

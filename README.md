@@ -2,7 +2,8 @@
 
 Protocol, tooling and analysis for the study **Forensic Fact Recoverability After Pod Termination:
 Effects of Acquisition Timing and Background Event Load on Retained Kubernetes Audit and eBPF
-Telemetry** (protocol FRX v3.0, amended v3.0.1).
+Telemetry** (protocol FRX v3.0, amended v3.0.1), published as **Forensic Fact Recoverability from
+Kubernetes Audit and eBPF Telemetry** (Electronics; see `CITATION.cff`).
 
 **Status:** execution and analysis complete. The release cited by the article is tag
 **`v1.0.1-submission`**; the cited analysis output set is the one named by that tag's commit
@@ -22,8 +23,8 @@ files, so older records are deleted as new ones arrive. The study asks:
 - **RQ1.** How often can an investigator recover a complete record of a short pod lifecycle after the
   pod is gone? The lifecycle is: a pod is created, a nonce-tagged command is executed in it, and it is
   deleted.
-- **H1.** Does acquisition timing (continuous follow vs one delayed copy) change that rate, and is the
-  change larger under heavier background event load?
+- **H1.** Does acquisition timing (continuous follow vs one delayed copy) change that rate, averaged
+  over low and moderate background event load?
 - **H2.** Does the same hold for the second source?
 - **E3 (exploratory).** Does a closed-form headroom rule predict when records are lost? The rule is
   H = ((M − o) + kM) / W, where M is the store size, o the file offset, k the backups kept and W the
@@ -47,7 +48,8 @@ The recovered facts are:
 - **Operating points:** δ = 60 s, g = 10 s, ε = 5 s. Each store is 10 MiB × 1 backup. The load
   rates (audit and Tetragon, B/s) are L ≈ 43 k / 46 k and M ≈ 231 k / 250 k.
 - **Primary endpoint and estimand:** Y = 1 if F1–F3 are all recovered (F2 under the union rule).
-  The estimand is Δ_A, the difference of the D − C effect between M and L.
+  The estimand is Δ_A, the D − C difference in that rate averaged over L and M,
+  Δ_A = ½[(p_LD − p_LC) + (p_MD − p_MC)] (`src/frx/metrics.py`); the interaction Δ_AS is exploratory.
 - **Analysis:**
   - Randomization test over block sign flips.
   - 95% CI chosen by a pre-specified structure rule; MOVER-Wilson is the fallback.
@@ -67,7 +69,7 @@ The recovered facts are:
 | Y = 1 | 16/16 | 16/16 | 16/16 | 11/16 |
 
 - **H1:** Δ̂_A = −0.156, randomization p = 0.062, 95% CI [−0.312, 0.005] (MOVER-Wilson). Not
-  rejected at α = 0.05: the timing × load effect is not distinguishable from zero at this precision.
+  rejected at α = 0.05: the timing effect is not distinguishable from zero at this precision.
   H2 was not tested (fixed sequence).
 - **False attribution:** 0/95 negative-control and decoy identities (Clopper–Pearson upper bound 0.038).
 - **E3:** the H < 1 rule classified every delayed-read run correctly (confirmatory and calibration
@@ -204,6 +206,28 @@ probabilities with observed ages and rates; offset distribution), `python -m frx
 `python -m frx.analysis interval-coverage` (block-aware sensitivity intervals for Delta_A and the
 simulated coverage of each interval under the blocked design).
 
+## Series F: flooding after pod removal (one backup)
+
+The flooding series is on branch `flooding-series` and in release `v1.2-flooding`. Its protocol
+(`protocol/flooding/AMENDMENT_F.md`, `plan.json`, `schedule.csv`) was fixed by `FREEZE_F.json` in the
+commit tagged `series-F-frozen`, pushed before the first counted run; the series was not registered on
+OSF. It uses the v3.0.1 run, scoring and mechanism functions without changing them and adds a flood
+controller (`src/frx/flooding/`); `protocol/flooding/RUNBOOK_F.md` gives the steps and
+`DEVIATIONS_F.md` the deviations record. Its outputs are written to
+`<evidence>/analysis_outputs/flooding/<commit>/`.
+
+```bash
+git checkout v1.2-flooding
+python -m frx.flooding verify                     # protocol files and tracked code match FREEZE_F.json
+python -m frx.flooding analyze --evidence DIR     # results_F.json and tables from the series F evidence
+pytest tests/test_flooding_series.py
+```
+
+Run each series at its own release. `frozen-diff` and `reproduce.sh` check the v3.0.1 freeze and allow
+the series R extension; at `v1.2-flooding` `frozen-diff` therefore lists the series F modules
+(`src/frx/flooding/*`, `scripts/flooding_session.sh`, `tests/test_flooding_series.py`), which are
+checked by `python -m frx.flooding verify` instead.
+
 ## Running a new study
 
 The gate runbooks in `protocol/gates/` describe each stage in order, G1–G7:
@@ -216,6 +240,39 @@ The gate runbooks in `protocol/gates/` describe each stage in order, G1–G7:
 
 The host setup is `scripts/hyperv_create_vm.ps1`, then `scripts/host_bootstrap_ubuntu.sh`, then
 `scripts/g1_preflight.sh`.
+
+## Article figures and their source
+
+| Article | File in the output set | Produced by |
+|---|---|---|
+| Figure 1 | `figures/F1_architecture.svg` | `python3 -m frx.analysis all` at `v1.0.1-submission` |
+| Figure 2 (two panels) | `figures/F3_cells.svg`, `figures/F4_effects.svg` | the same |
+| Figure 3 | `figures/F5_fact_source.svg` | the same |
+| Figure 4 | `figures/F7_calibration.svg` | the same |
+| Figure 5 | `figures/FR_robustness.svg` | `python -m frx.robustness` at `v1.1-robustness` (`analysis_outputs/robustness/<commit>/`; steps in `protocol/robustness/RUNBOOK_R.md`) |
+| Supplementary Figure S1 | `figures/F2_timeline.svg` | `python3 -m frx.analysis all` at `v1.0.1-submission` |
+| Supplementary Data S1, S2 | `data/run_level.csv`, `data/data_dictionary.csv` | the same; checked by `rebuild-check` |
+
+For the article, only the vertical-axis titles of Figures 4 and 5 were reworded ("Loss probability
+from measured rates and ages"; "Registered loss probability"); the plotted values are those of the
+output sets. The numbers in the article's tables come from `results.json` and the tables of the
+corresponding output set; `claims_register.csv` maps each headline number to the function and the
+run IDs behind it.
+
+Reusable components: the fact contract in machine-readable form (`protocol/contract.yaml`, loaded by
+`src/frx/contract.py`) and the retention headroom and loss probability functions
+(`src/frx/headroom.py`: `remaining_budget`, `headroom`, `predicted_loss_probability`,
+`rate_for_loss_probability`, `rate_for_headroom`).
+
+## How to cite
+
+Cite the article and this repository; `CITATION.cff` holds the metadata (GitHub shows it under
+"Cite this repository"). An archived copy of each release made after archiving was enabled is
+available from Zenodo; its DOI is shown in the release and the Zenodo record.
+
+## License
+
+Code: MIT License (`LICENSE`). Output sets and protocol records: CC BY 4.0 (`LICENSE-DATA.md`).
 
 ## Ground rules
 

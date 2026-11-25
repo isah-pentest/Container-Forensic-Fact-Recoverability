@@ -1,0 +1,17 @@
+{
+  "title": "Container Forensic Fact Recoverability: protocol, analysis code and output sets",
+  "upload_type": "software",
+  "description": "Protocol, harness, blinded scoring and analysis code for a preregistered randomized complete-block experiment on the recovery of independently verified pod creation, command execution and deletion from retained Kubernetes API server audit and Tetragon (eBPF) records after pod deletion, with a robustness series at doubled retained capacity and a flooding series. Includes the machine-readable fact contract (protocol/contract.yaml), the retention headroom and loss probability functions (src/frx/headroom.py) and the regeneration script (reproduce.sh). Analysis output sets are attached to the GitHub releases v1.0.1-submission, v1.1-robustness and v1.2-flooding.",
+  "creators": [
+    {"name": "Mohammed, Isah", "affiliation": "Sam Houston State University", "orcid": "0009-0008-0618-744X"},
+    {"name": "Liu, Qingzhong", "affiliation": "Sam Houston State University"},
+    {"name": "Shashidhar, Narasimha", "affiliation": "Sam Houston State University", "orcid": "0000-0002-4877-158X"}
+  ],
+  "keywords": ["Kubernetes forensics", "forensic fact recoverability", "evidence retention", "log rotation", "log flooding", "acquisition timing", "audit logs", "eBPF", "Tetragon"],
+  "license": "mit",
+  "access_right": "open",
+  "related_identifiers": [
+    {"identifier": "https://osf.io/b6rv9", "relation": "isDocumentedBy", "resource_type": "other"},
+    {"identifier": "https://doi.org/10.17605/OSF.IO/TQCXM", "relation": "isDocumentedBy", "resource_type": "other"}
+  ]
+}
